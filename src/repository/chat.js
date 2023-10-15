@@ -9,14 +9,14 @@ const chat = async (messages) => {
             model: 'gpt-4',
             messages,
             temperature: 1,
-            max_tokens: 1024,
+            max_tokens: 512,
             top_p: 0.001,
             frequency_penalty: 0,
-            presence_penalty: 0
+            presence_penalty: 0,
         }),
     });
     const data = await res.json();
-    return data;
+    return data.choices[0].message.content;
 };
 
-export {chat};
+export default {chat};
