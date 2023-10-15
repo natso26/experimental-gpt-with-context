@@ -1,0 +1,16 @@
+{
+  "name": "experimental-gpt-with-context",
+  "version": "2023.10.15",
+  "author": "Nat Sothanaphan",
+  "license": "MIT",
+  "description": "",
+  "type": "module",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "js-tiktoken": "^1.0.7"
+  }
+}
