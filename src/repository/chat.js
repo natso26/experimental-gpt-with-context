@@ -1,4 +1,6 @@
-const chat = async (messages) => {
+import wrapper from '../util/wrapper.js';
+
+const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlationId, messages) => {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -15,8 +17,11 @@ const chat = async (messages) => {
             presence_penalty: 0,
         }),
     });
+    if (!res.ok) {
+        throw new Error(`chat completions error, status: ${res.status}`);
+    }
     const data = await res.json();
     return data.choices[0].message.content;
-};
+});
 
 export default {chat};

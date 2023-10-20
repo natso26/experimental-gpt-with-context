@@ -1,0 +1,26 @@
+steps:
+  - id: 'Docker image/Build'
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |-
+        docker build \
+        -t asia-southeast1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/main:$COMMIT_SHA \
+        -t asia-southeast1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/main:latest \
+        --network=cloudbuild --build-arg=_ENV_PATH="$_ENV_PATH" .
+  - id: 'Docker image/Push'
+    name: gcr.io/cloud-builders/docker
+    args: [ 'push', '--all-tags', 'asia-southeast1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/main' ]
+  - id: 'Deploy to Cloud Run/Main service'
+    name: gcr.io/cloud-builders/gcloud
+    args: [
+      'run', 'deploy', '$REPO_NAME',
+      '--image', 'asia-southeast1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/main:$COMMIT_SHA',
+      '--region', 'asia-southeast1' ]
+images:
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/main:$COMMIT_SHA
+  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/main:latest
+timeout: 900s
+options:
+  logging: CLOUD_LOGGING_ONLY

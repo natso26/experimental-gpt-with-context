@@ -1,22 +1,22 @@
-import cache from '../repository/cache.js';
+import memory from '../repository/memory.js';
 import embedding from '../repository/embedding.js';
 import chat_ from '../repository/chat.js';
 import log from '../util/log.js';
+import wrapper from '../util/wrapper.js';
 
-const chat = async (message) => {
-    const questionEmbedding = await embedding.embed(message);
-    log.log('embedded question', {question: message});
-    const rawContext = await cache.search((item, i, length) => {
-        const discount = recencyDiscount(i, length);
+const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId, chatId, message) => {
+    log.log('chat parameters', {correlationId, chatId, question: message});
+    const questionEmbedding = await embedding.embed(correlationId, message);
+    const rawContext = await memory.search(correlationId, chatId, (elt, i) => {
+        const discount = recencyDiscount(i);
         if (discount === null) {
-            return 99 - (length - 1 - i);
+            return 99 - i;
         }
-        return cosineSimilarity(questionEmbedding, item.questionEmbedding) * discount;
+        return cosineSimilarity(questionEmbedding, elt.questionEmbedding) * discount;
     }, 7);
-    const context = rawContext.map(([{question, reply}, relevance]) => (
-        {relevance, question, reply}));
-    context.reverse();
-    log.log('searched context', {context});
+    const context = rawContext.reverse().map(
+        ([{question, reply}, relevance]) => ({relevance, question, reply}));
+    log.log('searched context', {correlationId, context});
     const messages = [
         {
             role: 'system',
@@ -27,21 +27,21 @@ const chat = async (message) => {
             content: message,
         },
     ];
-    log.log('chat messages', {messages});
-    const reply = await chat_.chat(messages);
-    await cache.add({
+    log.log('chat messages', {correlationId, messages});
+    const reply = await chat_.chat(correlationId, messages);
+    await memory.add(correlationId, chatId, {
         questionEmbedding,
         question: message,
         reply,
     });
-    log.log('chat reply', {reply})
+    log.log('chat reply', {correlationId, reply});
     return {
         reply,
         context,
     };
-};
+});
 
 const cosineSimilarity = (a, b) => a.map((e, i) => e * b[i]).reduce((x, y) => x + y);
-const recencyDiscount = (i, length) => length - 1 - i < 2 ? null : (length - 1 - i) ** -.5;
+const recencyDiscount = (i) => i < 2 ? null : i ** -.5;
 
 export default {chat};
