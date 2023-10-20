@@ -47,19 +47,19 @@ jspm_packages/
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
 
-# TypeScript memory
+# TypeScript cache
 *.tsbuildinfo
 
-# Optional npm memory directory
+# Optional npm cache directory
 .npm
 
-# Optional eslint memory
+# Optional eslint cache
 .eslintcache
 
-# Optional stylelint memory
+# Optional stylelint cache
 .stylelintcache
 
-# Microbundle memory
+# Microbundle cache
 .rpt2_cache/
 .rts2_cache_cjs/
 .rts2_cache_es/
@@ -81,9 +81,9 @@ web_modules/
 .env.production.local
 .env.local
 
-# parcel-bundler memory (https://parceljs.org/)
-.memory
-.parcel-memory
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
 
 # Next.js build output
 .next
@@ -94,7 +94,7 @@ out
 dist
 
 # Gatsby files
-.memory/
+.cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js
 # https://nextjs.org/blog/next-9-1#public-directory-support
 # public
@@ -102,17 +102,17 @@ dist
 # vuepress build output
 .vuepress/dist
 
-# vuepress v2.x temp and memory directory
+# vuepress v2.x temp and cache directory
 .temp
-.memory
+.cache
 
-# Docusaurus memory and generated files
+# Docusaurus cache and generated files
 .docusaurus
 
 # Serverless directories
 .serverless/
 
-# FuseBox memory
+# FuseBox cache
 .fusebox/
 
 # DynamoDB Local files
@@ -125,7 +125,7 @@ dist
 .vscode-test
 
 # yarn v2
-.yarn/memory
+.yarn/cache
 .yarn/unplugged
 .yarn/build-state.yml
 .yarn/install-state.gz
