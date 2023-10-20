@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Experimental GPT with Context</title>
+    <style>
+        body {
+            font-family: monospace;
+            font-size: 16px;
+            margin: 16px 0 0 12px;
+            color: #262626;
+        }
+
+        .text-box {
+            font-family: monospace;
+            font-size: 15px;
+            width: 85%;
+            border: 1px solid #bbb;
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .button {
+            font-family: monospace;
+            font-size: 14px;
+            width: 110px;
+            border: none;
+            border-radius: 18px;
+            padding: 8px;
+            margin: 4px 0 0 0;
+            background-color: aliceblue;
+        }
+    </style>
+</head>
+<body>
+<p>Chat ID</p>
+<div>
+    <textarea class="text-box" id="chat-id" rows="1"></textarea>
+</div>
+<p>Question</p>
+<div>
+    <textarea class="text-box" id="question" rows="3"></textarea>
+</div>
+<div>
+    <button class="button" id="submit">Submit</button>
+</div>
+<p>Reply</p>
+<div>
+    <textarea class="text-box" disabled id="reply" rows="12"></textarea>
+</div>
+
+<script>
+    const submitButton = document.getElementById('submit');
+    const chatIdBox = document.getElementById('chat-id');
+    const questionBox = document.getElementById('question');
+    const replyBox = document.getElementById('reply');
+    const uuidv4 = () => {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    };
+    chatIdBox.value = uuidv4();
+    submitButton.addEventListener('click', async () => {
+        const chatId = chatIdBox.value;
+        const question = questionBox.value;
+        submitButton.disabled = true;
+        chatIdBox.disabled = true;
+        questionBox.disabled = true;
+        try {
+            const resp = await fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({chatId, message: question}),
+            });
+            if (!resp.ok) {
+                const error = await resp.json();
+                console.log({error});
+                replyBox.innerHTML = JSON.stringify(error, null, 2);
+            } else {
+                const data = await resp.json();
+                console.log({data});
+                replyBox.innerHTML = data.reply;
+            }
+        } catch (e) {
+            replyBox.innerHTML = e.message ?? 'There was an error fetching a response.';
+        }
+        submitButton.disabled = false;
+        chatIdBox.disabled = false;
+        questionBox.disabled = false;
+    });
+</script>
+</body>
+</html>

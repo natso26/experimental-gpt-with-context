@@ -1,10 +1,13 @@
 import express from 'express';
 import * as uuid from 'uuid';
 import 'dotenv/config';
-import chat_ from './src/handler/chat.js';
-import wrapper from './src/util/wrapper.js';
+import chat_ from './handler/chat.js';
+import wrapper from './util/wrapper.js';
 
 const app = express();
+app.get('/', (req, res) => {
+    res.sendFile('index.html', {root: './public'});
+});
 app.use(express.json());
 app.use((req, res, next) => {
     const correlationId = req.headers['x-correlation-id'] || uuid.v4();
