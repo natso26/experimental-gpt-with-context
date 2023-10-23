@@ -12,7 +12,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         if (discount === null) {
             return 99 - i;
         }
-        return cosineSimilarity(questionEmbedding, elt.questionEmbedding) * discount;
+        return 10 * cosineSimilarity(questionEmbedding, elt.questionEmbedding) * discount;
     }, 7);
     const context = rawContext.reverse().map(
         ([{question, reply}, relevance]) => ({relevance, question, reply}));
