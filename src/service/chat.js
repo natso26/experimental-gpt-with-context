@@ -20,7 +20,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     const messages = [
         {
             role: 'system',
-            content: JSON.stringify(context),
+            content: `long-term memory: []\nshort-term memory: ${JSON.stringify(context)}`,
         },
         {
             role: 'user',
