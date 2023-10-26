@@ -36,6 +36,15 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         reply,
     });
     log.log('chat reply', {correlationId, reply});
+    // in background
+    memory.consolidate(correlationId, chatId, async (lvl, raw) => {
+        const input = lvl ? raw : raw.map(({question, reply}) => ({question, reply}));
+        log.log('consolidation input', {correlationId, lvl, input});
+        return await chat_.chat(correlationId, [{
+            role: 'system',
+            content: `summarize ${JSON.stringify(input)}`,
+        }]);
+    });
     return {
         reply,
         context,
