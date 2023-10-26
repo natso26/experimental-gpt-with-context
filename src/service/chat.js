@@ -8,20 +8,26 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     log.log('chat parameters', {correlationId, chatId, question: message});
     const questionEmbedding = await embedding.embed(correlationId, message);
     const refTime = new Date();
-    const rawContext = await memory.search(correlationId, chatId, (elt, i, timestamp) => {
+    const rawShortTermContext = await memory.shortTermSearch(correlationId, chatId, (elt, i, timestamp) => {
         const discount = recencyDiscount(i, refTime - timestamp);
         if (discount === null) {
             return 99 - i;
         }
         return 10 * cosineSimilarity(questionEmbedding, elt.questionEmbedding) * discount;
     }, 7);
-    const context = rawContext.reverse().map(
+    const shortTermContext = rawShortTermContext.reverse().map(
         ([{question, reply}, relevance]) => ({relevance, question, reply}));
-    log.log('searched context', {correlationId, context});
+    log.log('searched short-term context', {correlationId, shortTermContext});
+    const rawLongTermContext = await memory.longTermSearch(correlationId, chatId, (consolidation) => {
+        return cosineSimilarity(questionEmbedding, consolidation.summaryEmbedding);
+    }, 2);
+    const longTermContext = rawLongTermContext.reverse().map(
+        ([{summary},]) => ({summary}));
+    log.log('searched long-term context', {correlationId, longTermContext});
     const messages = [
         {
             role: 'system',
-            content: `long-term memory: []\nshort-term memory: ${JSON.stringify(context)}`,
+            content: `long-term memory: ${JSON.stringify(longTermContext)}\nshort-term memory: ${JSON.stringify(shortTermContext)}`,
         },
         {
             role: 'user',
@@ -37,17 +43,27 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     });
     log.log('chat reply', {correlationId, reply});
     // in background
-    memory.consolidate(correlationId, chatId, async (lvl, raw) => {
-        const input = lvl ? raw : raw.map(({question, reply}) => ({question, reply}));
-        log.log('consolidation input', {correlationId, lvl, input});
-        return await chat_.chat(correlationId, [{
-            role: 'system',
-            content: `summarize ${JSON.stringify(input)}`,
-        }]);
-    });
+    (async () => {
+        try {
+            await memory.consolidate(correlationId, chatId, async (lvl, raw) => {
+                const input = lvl ? raw.map(({summary}) => summary)
+                    : raw.map(({question, reply}) => ({question, reply}));
+                log.log('consolidation input', {correlationId, lvl, input});
+                const summary = await chat_.chat(correlationId, [{
+                    role: 'system',
+                    content: `summarize ${JSON.stringify(input)}`,
+                }]);
+                const summaryEmbedding = await embedding.embed(correlationId, summary);
+                return {summary, summaryEmbedding};
+            });
+        } catch {
+            log.log('consolidation failed', {correlationId});
+        }
+    })();
     return {
         reply,
-        context,
+        shortTermContext,
+        longTermContext,
     };
 });
 

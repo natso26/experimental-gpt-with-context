@@ -20,7 +20,7 @@ const add = wrapper.logCorrelationId('repository.memory.add', async (correlation
     });
 });
 
-const search = wrapper.logCorrelationId('repository.memory.search', async (correlationId, chatId, maximizingObjective, numResults) => {
+const shortTermSearch = wrapper.logCorrelationId('repository.memory.shortTermSearch', async (correlationId, chatId, maximizingObjective, numResults) => {
     const snapshot = await coll.doc(chatId).collection('elts')
         .orderBy('index', 'desc').limit(1000).get();
     const data = snapshot.docs.map(doc => doc.data());
@@ -29,9 +29,25 @@ const search = wrapper.logCorrelationId('repository.memory.search', async (corre
         .slice(0, numResults);
 });
 
+const longTermSearch = wrapper.logCorrelationId('repository.memory.longTermSearch', async (correlationId, chatId, maximizingObjective, numResults) => {
+    const data = [];
+    for (let lvl = 0; lvl <= 9; lvl++) {
+        const snapshot = await coll.doc(chatId).collection(`${lvl}-consolidations`)
+            .orderBy('index', 'desc').limit(63).get();
+        if (snapshot.empty) {
+            continue;
+        }
+        const rawLvlData = snapshot.docs.map(doc => doc.data());
+        const lvlData = rawLvlData.filter(({index}) => index > rawLvlData[rawLvlData.length - 1].index - 63);
+        data.push(...lvlData);
+    }
+    return data.map(({consolidation}) => [consolidation, maximizingObjective(consolidation)])
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, numResults);
+});
+
 const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', async (correlationId, chatId, consolidationFn) => {
-    let lvl = 0;
-    while (true) {
+    for (let lvl = 0; lvl <= 9; lvl++) {
         const prevLvlColl = lvl ? await coll.doc(chatId).collection(`${lvl - 1}-consolidations`)
             : coll.doc(chatId).collection('elts');
         const lvlColl = coll.doc(chatId).collection(`${lvl}-consolidations`);
@@ -54,19 +70,18 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
                 .map(doc => doc.data()).reverse();
             for (let i = latestLvlIndex + 1; i <= targetLvlIndex; i++) {
                 const raw = prevLvlData.slice(4 * (i - latestLvlIndex - 1), 4 * (i - latestLvlIndex + !lvl));
-                const summary = await consolidationFn(lvl,
-                    lvl ? raw.map(({summary}) => summary) : raw.map(({elt}) => elt));
+                const consolidation = await consolidationFn(lvl,
+                    lvl ? raw.map(({consolidation}) => consolidation) : raw.map(({elt}) => elt));
                 await txn.set(lvlColl.doc(), {
                     index: i,
-                    summary,
+                    consolidation,
                 });
             }
         });
         if (res === 'final-level') {
             break;
         }
-        lvl++;
     }
 });
 
-export default {add, search, consolidate};
+export default {add, shortTermSearch, longTermSearch, consolidate};
