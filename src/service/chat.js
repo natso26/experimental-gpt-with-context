@@ -37,8 +37,8 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     log.log('chat messages', {correlationId, messages});
     const reply = await chat_.chat(correlationId, messages);
     await memory.add(correlationId, chatId, {
-        questionEmbedding,
         question: message,
+        questionEmbedding,
         reply,
     });
     log.log('chat reply', {correlationId, reply});
