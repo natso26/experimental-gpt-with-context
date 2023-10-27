@@ -5,18 +5,18 @@ const db = new firestore.Firestore();
 const coll = db.collection('memory');
 
 const add = wrapper.logCorrelationId('repository.memory.add', async (correlationId, chatId, elt) => {
-    const eltsRef = coll.doc(chatId).collection('elts');
+    const eltsColl = coll.doc(chatId).collection('elts');
     const timestamp = new Date();
     return await db.runTransaction(async (txn) => {
-        const snapshot = await txn.get(eltsRef.orderBy('index', 'desc').limit(1));
+        const snapshot = await txn.get(eltsColl.orderBy('index', 'desc').limit(1));
         const index = snapshot.empty ? 0 : snapshot.docs[0].data().index + 1;
-        const docRef = eltsRef.doc();
-        await txn.set(docRef, {
+        const doc = eltsColl.doc();
+        await txn.set(doc, {
             index,
             timestamp,
             elt,
         });
-        return docRef.id;
+        return doc.id;
     });
 });
 

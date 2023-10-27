@@ -1,11 +1,17 @@
-import memory from '../repository/memory.js';
+import tokenizer from '../repository/tokenizer.js';
 import embedding from '../repository/embedding.js';
+import memory from '../repository/memory.js';
 import chat_ from '../repository/chat.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
 const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId, chatId, message) => {
     log.log('chat parameters', {correlationId, chatId, question: message});
+    const messageTokenCount = await tokenizer.countTokens(correlationId, message);
+    log.log('message token count', {correlationId, messageTokenCount});
+    if (messageTokenCount > 256) {
+        throw new Error(`message exceeds maximum length of 256 tokens: ${messageTokenCount} tokens`);
+    }
     const questionEmbedding = await embedding.embed(correlationId, message);
     const refTime = new Date();
     const rawShortTermContext = await memory.shortTermSearch(correlationId, chatId, (elt, i, timestamp) => {
@@ -36,12 +42,16 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     ];
     log.log('chat messages', {correlationId, messages});
     const reply = await chat_.chat(correlationId, messages);
-    await memory.add(correlationId, chatId, {
-        questionEmbedding,
-        question: message,
-        reply,
-    });
     log.log('chat reply', {correlationId, reply});
+    const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
+    log.log('reply token count', {correlationId, replyTokenCount});
+    await memory.add(correlationId, chatId, {
+        question: message,
+        questionTokenCount: messageTokenCount,
+        questionEmbedding,
+        reply,
+        replyTokenCount,
+    });
     // in background
     (async () => {
         try {
