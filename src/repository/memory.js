@@ -10,14 +10,20 @@ const add = wrapper.logCorrelationId('repository.memory.add', async (correlation
     return await db.runTransaction(async (txn) => {
         const snapshot = await txn.get(eltsColl.orderBy('index', 'desc').limit(1));
         const index = snapshot.empty ? 0 : snapshot.docs[0].data().index + 1;
-        const doc = eltsColl.doc();
-        await txn.set(doc, {
+        await txn.set(eltsColl.doc(), {
             index,
             timestamp,
             elt,
         });
-        return doc.id;
+        return index;
     });
+});
+
+const getLatest = wrapper.logCorrelationId('repository.memory.getLatest', async (correlationId, chatId, numResults) => {
+    const snapshot = await coll.doc(chatId).collection('elts')
+        .orderBy('index', 'desc').limit(numResults).get();
+    const data = snapshot.docs.map(doc => doc.data());
+    return [data.map(({elt}) => elt).reverse(), data.empty ? -1 : data[0].index];
 });
 
 const shortTermSearch = wrapper.logCorrelationId('repository.memory.shortTermSearch', async (correlationId, chatId, maximizingObjective, numResults) => {
@@ -65,6 +71,7 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
                 return;
             }
             const prevLvlSnapshot = await txn.get(prevLvlColl.orderBy('index', 'desc')
+                .offset((latestPrevLvlIndex + 1) % 4)
                 .limit(4 * (targetLvlIndex - latestLvlIndex + !lvl)));
             const prevLvlData = prevLvlSnapshot.docs
                 .map(doc => doc.data()).reverse();
@@ -84,4 +91,4 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
     }
 });
 
-export default {add, shortTermSearch, longTermSearch, consolidate};
+export default {add, getLatest, shortTermSearch, longTermSearch, consolidate};
