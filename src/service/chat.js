@@ -19,10 +19,12 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         if (discount === null) {
             return 99 - i;
         }
-        return 10 * cosineSimilarity(questionEmbedding, elt.questionEmbedding) * discount;
+        const targetEmbedding = elt.questionEmbedding || elt.introspectionEmbedding;
+        return 10 * cosineSimilarity(questionEmbedding, targetEmbedding) * discount;
     }, 7);
     const shortTermContext = rawShortTermContext.reverse().map(
-        ([{question, reply}, relevance]) => ({relevance, question, reply}));
+        ([{question, reply, introspection}, relevance]) =>
+            !introspection ? {relevance, question, reply} : {relevance, introspection});
     log.log('searched short-term context', {correlationId, shortTermContext});
     const rawLongTermContext = await memory.longTermSearch(correlationId, chatId, (consolidation) => {
         return cosineSimilarity(questionEmbedding, consolidation.summaryEmbedding);
@@ -45,7 +47,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     log.log('chat reply', {correlationId, reply});
     const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
     log.log('reply token count', {correlationId, replyTokenCount});
-    await memory.add(correlationId, chatId, {
+    const index = await memory.add(correlationId, chatId, {
         question: message,
         questionTokenCount: messageTokenCount,
         questionEmbedding,
@@ -60,9 +62,21 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             'X-Correlation-Id': correlationId,
         },
         body: JSON.stringify({chatId}),
-    });
+    }).catch((e) =>
+        log.log('fetch consolidate failed, may have timed out', {correlationId, e: e.message || ''}));
+    // in background
+    fetch(`${process.env.BACKGROUND_TASK_HOST}/introspect`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Correlation-Id': correlationId,
+        },
+        body: JSON.stringify({chatId, index}),
+    }).catch((e) =>
+        log.log('fetch introspect failed, may have timed out', {correlationId, e: e.message || ''}));
     return {
         reply,
+        index,
         shortTermContext,
         longTermContext,
     };

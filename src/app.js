@@ -1,8 +1,9 @@
 import express from 'express';
 import * as uuid from 'uuid';
 import 'dotenv/config';
-import chat_ from './handler/chat.js';
+import chat from './handler/chat.js';
 import consolidate from './handler/consolidate.js';
+import introspect from './handler/introspect.js';
 import wrapper from './util/wrapper.js';
 
 const app = express();
@@ -20,26 +21,17 @@ app.get('/ping', async (req, res) => {
     await wrapper.logCorrelationId('/ping',
         async (_) => res.json({timestamp: new Date().toISOString()}))(req.correlationId);
 });
-app.post('/chat', async (req, res) => {
-    await wrapper.logCorrelationId('/chat',
-        async (correlationId) => {
-            try {
-                const ret = await chat_.chat(correlationId, req.body);
-                res.json(ret);
-            } catch (e) {
-                res.status(500).json({error: e.message ?? '', stack: e.stack ?? ''});
-            }
-        })(req.correlationId);
-});
-app.post('/consolidate', async (req, res) => {
-    await wrapper.logCorrelationId('/consolidate',
-        async (correlationId) => {
-            try {
-                const ret = await consolidate.consolidate(correlationId, req.body);
-                res.json(ret);
-            } catch (e) {
-                res.status(500).json({error: e.message ?? '', stack: e.stack ?? ''});
-            }
-        })(req.correlationId);
-});
+const wrapHandler = (name, handlerFn) => async (req, res) => {
+    await wrapper.logCorrelationId(name, async (correlationId) => {
+        try {
+            const ret = await handlerFn(correlationId, req.body);
+            res.json(ret);
+        } catch (e) {
+            res.status(500).json({error: e.message ?? '', stack: e.stack ?? ''});
+        }
+    })(req.correlationId);
+};
+app.post('/chat', wrapHandler('/chat', chat.chat));
+app.post('/consolidate', wrapHandler('/consolidate', consolidate.consolidate));
+app.post('/introspect', wrapHandler('/introspect', introspect.introspect));
 app.listen(process.env.PORT);
