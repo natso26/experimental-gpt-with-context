@@ -53,23 +53,14 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         replyTokenCount,
     });
     // in background
-    (async () => {
-        try {
-            await memory.consolidate(correlationId, chatId, async (lvl, raw) => {
-                const input = lvl ? raw.map(({summary}) => summary)
-                    : raw.map(({question, reply}) => ({question, reply}));
-                log.log('consolidation input', {correlationId, lvl, input});
-                const summary = await chat_.chat(correlationId, [{
-                    role: 'system',
-                    content: `summarize ${JSON.stringify(input)}`,
-                }]);
-                const summaryEmbedding = await embedding.embed(correlationId, summary);
-                return {summary, summaryEmbedding};
-            });
-        } catch {
-            log.log('consolidation failed', {correlationId});
-        }
-    })();
+    fetch(`${process.env.BACKGROUND_TASK_HOST}/consolidate`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Correlation-Id': correlationId,
+        },
+        body: JSON.stringify({chatId}),
+    });
     return {
         reply,
         shortTermContext,
