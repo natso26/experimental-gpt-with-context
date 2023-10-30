@@ -2,6 +2,7 @@ import express from 'express';
 import * as uuid from 'uuid';
 import 'dotenv/config';
 import chat_ from './handler/chat.js';
+import consolidate from './handler/consolidate.js';
 import wrapper from './util/wrapper.js';
 
 const app = express();
@@ -24,6 +25,17 @@ app.post('/chat', async (req, res) => {
         async (correlationId) => {
             try {
                 const ret = await chat_.chat(correlationId, req.body);
+                res.json(ret);
+            } catch (e) {
+                res.status(500).json({error: e.message ?? '', stack: e.stack ?? ''});
+            }
+        })(req.correlationId);
+});
+app.post('/consolidate', async (req, res) => {
+    await wrapper.logCorrelationId('/consolidate',
+        async (correlationId) => {
+            try {
+                const ret = await consolidate.consolidate(correlationId, req.body);
                 res.json(ret);
             } catch (e) {
                 res.status(500).json({error: e.message ?? '', stack: e.stack ?? ''});
