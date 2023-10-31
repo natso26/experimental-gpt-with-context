@@ -26,5 +26,18 @@
 <div>
     <textarea class="text-box" id="chat-id" rows="1"></textarea>
 </div>
+
+<script>
+    const chatIdBox = document.getElementById('chat-id');
+    const updateUrl = () => {
+        const chatId = chatIdBox.value.trim();
+        const url = new URL(window.location.href);
+        url.searchParams.set('chatId', chatId);
+        window.history.pushState({}, '', url);
+    };
+    chatIdBox.value = new URL(window.location.href).searchParams.get('chatId') || '';
+    updateUrl();
+    chatIdBox.addEventListener('change', updateUrl);
+</script>
 </body>
 </html>
