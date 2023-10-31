@@ -4,11 +4,17 @@ import 'dotenv/config';
 import chat from './handler/chat.js';
 import consolidate from './handler/consolidate.js';
 import introspect from './handler/introspect.js';
+import log from './util/log.js';
 import wrapper from './util/wrapper.js';
 
 const app = express();
 app.get('/', (req, res) => {
+    log.log('send index.html');
     res.sendFile('index.html', {root: './public'});
+});
+app.get('/history', (req, res) => {
+    log.log('send history.html');
+    res.sendFile('history.html', {root: './public'});
 });
 app.use(express.json());
 app.use((req, res, next) => {

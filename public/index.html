@@ -20,6 +20,13 @@
             padding: 10px;
         }
 
+        .buttons-panel {
+            display: flex;
+            flex-direction: row;
+            width: calc(85% + 20px);
+            justify-content: space-between;
+        }
+
         .button {
             font-family: monospace;
             font-size: 14px;
@@ -29,6 +36,10 @@
             padding: 8px;
             margin: 4px 0 0 0;
             background-color: aliceblue;
+        }
+
+        .button-recolor {
+            background-color: orange;
         }
     </style>
 </head>
@@ -41,8 +52,9 @@
 <div>
     <textarea class="text-box" id="question" rows="3"></textarea>
 </div>
-<div>
+<div class="buttons-panel">
     <button class="button" id="submit">Submit</button>
+    <button class="button button-recolor" id="history">History</button>
 </div>
 <p>Reply</p>
 <div>
@@ -50,9 +62,10 @@
 </div>
 
 <script>
-    const submitButton = document.getElementById('submit');
     const chatIdBox = document.getElementById('chat-id');
     const questionBox = document.getElementById('question');
+    const submitButton = document.getElementById('submit');
+    const historyButton = document.getElementById('history');
     const replyBox = document.getElementById('reply');
     const uuidv4 = () => {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -61,13 +74,21 @@
             return v.toString(16);
         });
     };
-    chatIdBox.value = uuidv4();
+    const updateUrl = () => {
+        const chatId = chatIdBox.value.trim();
+        const url = new URL(window.location.href);
+        url.searchParams.set('chatId', chatId);
+        window.history.pushState({}, '', url);
+    };
+    chatIdBox.value = new URL(window.location.href).searchParams.get('chatId') || uuidv4();
+    updateUrl();
+    chatIdBox.addEventListener('change', updateUrl);
     submitButton.addEventListener('click', async () => {
-        const chatId = chatIdBox.value;
+        const chatId = chatIdBox.value.trim();
         const question = questionBox.value;
-        submitButton.disabled = true;
         chatIdBox.disabled = true;
         questionBox.disabled = true;
+        submitButton.disabled = true;
         try {
             const resp = await fetch('/chat', {
                 method: 'POST',
@@ -88,9 +109,13 @@
         } catch (e) {
             replyBox.innerHTML = e.message ?? 'There was an error fetching a response.';
         }
-        submitButton.disabled = false;
         chatIdBox.disabled = false;
         questionBox.disabled = false;
+        submitButton.disabled = false;
+    });
+    historyButton.addEventListener('click', () => {
+        const chatId = chatIdBox.value.trim();
+        window.location.href = `/history?chatId=${chatId}`;
     });
 </script>
 </body>
