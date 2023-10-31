@@ -20,6 +20,13 @@
             padding: 10px;
         }
 
+        .buttons-panel {
+            display: flex;
+            flex-direction: row;
+            width: calc(85% + 20px);
+            justify-content: space-between;
+        }
+
         .button {
             font-family: monospace;
             font-size: 14px;
@@ -29,6 +36,10 @@
             padding: 8px;
             margin: 4px 0 0 0;
             background-color: aliceblue;
+        }
+
+        .button-recolor {
+            background-color: orange;
         }
     </style>
 </head>
@@ -41,8 +52,9 @@
 <div>
     <textarea class="text-box" id="question" rows="3"></textarea>
 </div>
-<div>
+<div class="buttons-panel">
     <button class="button" id="submit">Submit</button>
+    <button class="button button-recolor" id="history">History</button>
 </div>
 <p>Reply</p>
 <div>
