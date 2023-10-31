@@ -62,9 +62,10 @@
 </div>
 
 <script>
-    const submitButton = document.getElementById('submit');
     const chatIdBox = document.getElementById('chat-id');
     const questionBox = document.getElementById('question');
+    const submitButton = document.getElementById('submit');
+    const historyButton = document.getElementById('history');
     const replyBox = document.getElementById('reply');
     const uuidv4 = () => {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -85,9 +86,9 @@
     submitButton.addEventListener('click', async () => {
         const chatId = chatIdBox.value.trim();
         const question = questionBox.value;
-        submitButton.disabled = true;
         chatIdBox.disabled = true;
         questionBox.disabled = true;
+        submitButton.disabled = true;
         try {
             const resp = await fetch('/chat', {
                 method: 'POST',
@@ -108,9 +109,13 @@
         } catch (e) {
             replyBox.innerHTML = e.message ?? 'There was an error fetching a response.';
         }
-        submitButton.disabled = false;
         chatIdBox.disabled = false;
         questionBox.disabled = false;
+        submitButton.disabled = false;
+    });
+    historyButton.addEventListener('click', () => {
+        const chatId = chatIdBox.value.trim();
+        window.location.href = `/history?chatId=${chatId}`;
     });
 </script>
 </body>
