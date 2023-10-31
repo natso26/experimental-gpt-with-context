@@ -61,9 +61,17 @@
             return v.toString(16);
         });
     };
-    chatIdBox.value = uuidv4();
+    const updateUrl = () => {
+        const chatId = chatIdBox.value.trim();
+        const url = new URL(window.location.href);
+        url.searchParams.set('chatId', chatId);
+        window.history.pushState({}, '', url);
+    };
+    chatIdBox.value = new URL(window.location.href).searchParams.get('chatId') || uuidv4();
+    updateUrl();
+    chatIdBox.addEventListener('change', updateUrl);
     submitButton.addEventListener('click', async () => {
-        const chatId = chatIdBox.value;
+        const chatId = chatIdBox.value.trim();
         const question = questionBox.value;
         submitButton.disabled = true;
         chatIdBox.disabled = true;
