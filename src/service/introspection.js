@@ -29,7 +29,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
         introspection,
         introspectionTokenCount,
         introspectionEmbedding,
-    });
+    }, true);
 });
 
 export default {introspect};

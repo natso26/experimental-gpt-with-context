@@ -25,6 +25,7 @@
             flex-direction: row;
             width: calc(85% + 20px);
             justify-content: space-between;
+            align-items: center;
         }
 
         .button {
@@ -44,11 +45,12 @@
     </style>
 </head>
 <body>
-<p>Chat ID</p>
+<label for="chat-id">Chat ID</label>
 <div>
     <textarea class="text-box" id="chat-id" rows="1"></textarea>
 </div>
-<p>Question</p>
+<br>
+<label for="question">Question</label>
 <div>
     <textarea class="text-box" id="question" rows="3"></textarea>
 </div>
@@ -56,7 +58,8 @@
     <button class="button" id="submit">Submit</button>
     <button class="button button-recolor" id="history">History</button>
 </div>
-<p>Reply</p>
+<br>
+<label for="reply">Reply</label>
 <div>
     <textarea class="text-box" disabled id="reply" rows="12"></textarea>
 </div>
@@ -90,7 +93,7 @@
         questionBox.disabled = true;
         submitButton.disabled = true;
         try {
-            const resp = await fetch('/chat', {
+            const resp = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -107,7 +110,7 @@
                 replyBox.innerHTML = data.reply;
             }
         } catch (e) {
-            replyBox.innerHTML = e.message ?? 'There was an error fetching a response.';
+            replyBox.innerHTML = e.message || 'There was an error fetching a response.';
         }
         chatIdBox.disabled = false;
         questionBox.disabled = false;
