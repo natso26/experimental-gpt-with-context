@@ -4,7 +4,7 @@ import wrapper from '../util/wrapper.js';
 const db = new firestore.Firestore();
 const coll = db.collection('memory');
 
-const add = wrapper.logCorrelationId('repository.memory.add', async (correlationId, chatId, elt) => {
+const add = wrapper.logCorrelationId('repository.memory.add', async (correlationId, chatId, elt, isInternal) => {
     const eltsColl = coll.doc(chatId).collection('elts');
     const timestamp = new Date();
     return await db.runTransaction(async (txn) => {
@@ -13,6 +13,7 @@ const add = wrapper.logCorrelationId('repository.memory.add', async (correlation
         await txn.set(eltsColl.doc(), {
             index,
             timestamp,
+            isInternal,
             elt,
         });
         return index;
@@ -24,6 +25,13 @@ const getLatest = wrapper.logCorrelationId('repository.memory.getLatest', async 
         .orderBy('index', 'desc').limit(numResults).get();
     const data = snapshot.docs.map(doc => doc.data());
     return [data.map(({elt}) => elt).reverse(), data.empty ? -1 : data[0].index];
+});
+
+const getHistory = wrapper.logCorrelationId('repository.memory.getHistory', async (correlationId, chatId, offset, limit) => {
+    const snapshot = await coll.doc(chatId).collection('elts').where('isInternal', '!=', true)
+        .orderBy('index', 'desc').offset(offset).limit(limit).get();
+    const data = snapshot.docs.map(doc => doc.data());
+    return data.map(({elt}) => elt).reverse();
 });
 
 const shortTermSearch = wrapper.logCorrelationId('repository.memory.shortTermSearch', async (correlationId, chatId, maximizingObjective, numResults) => {
@@ -91,4 +99,4 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
     }
 });
 
-export default {add, getLatest, shortTermSearch, longTermSearch, consolidate};
+export default {add, getLatest, getHistory, shortTermSearch, longTermSearch, consolidate};

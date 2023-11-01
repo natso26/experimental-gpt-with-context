@@ -4,6 +4,7 @@ import 'dotenv/config';
 import chat from './handler/chat.js';
 import consolidate from './handler/consolidate.js';
 import introspect from './handler/introspect.js';
+import history from './handler/history.js';
 import log from './util/log.js';
 import wrapper from './util/wrapper.js';
 
@@ -23,8 +24,8 @@ app.use((req, res, next) => {
     res.setHeader('X-Correlation-ID', correlationId);
     next();
 });
-app.get('/ping', async (req, res) => {
-    await wrapper.logCorrelationId('/ping',
+app.get('/api/ping', async (req, res) => {
+    await wrapper.logCorrelationId('/api/ping',
         async (_) => res.json({timestamp: new Date().toISOString()}))(req.correlationId);
 });
 const wrapHandler = (name, handlerFn) => async (req, res) => {
@@ -37,7 +38,8 @@ const wrapHandler = (name, handlerFn) => async (req, res) => {
         }
     })(req.correlationId);
 };
-app.post('/chat', wrapHandler('/chat', chat.chat));
-app.post('/consolidate', wrapHandler('/consolidate', consolidate.consolidate));
-app.post('/introspect', wrapHandler('/introspect', introspect.introspect));
+app.post('/api/chat', wrapHandler('/api/chat', chat.chat));
+app.post('/api/consolidate', wrapHandler('/api/consolidate', consolidate.consolidate));
+app.post('/api/introspect', wrapHandler('/api/introspect', introspect.introspect));
+app.post('/api/history', wrapHandler('/api/history', history.history));
 app.listen(process.env.PORT);
