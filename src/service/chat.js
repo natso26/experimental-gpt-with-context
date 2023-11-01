@@ -63,7 +63,9 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         },
         body: JSON.stringify({chatId}),
     }).catch((e) =>
-        log.log('fetch consolidate failed, may have timed out', {correlationId, e: e.message || ''}));
+        log.log('fetch consolidate failed, may have timed out', {
+            correlationId, error: e.message || '', stack: e.stack || '',
+        }));
     // in background
     fetch(`${process.env.BACKGROUND_TASK_HOST}/api/introspect`, {
         method: 'POST',
@@ -73,7 +75,9 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         },
         body: JSON.stringify({chatId, index}),
     }).catch((e) =>
-        log.log('fetch introspect failed, may have timed out', {correlationId, e: e.message || ''}));
+        log.log('fetch introspect failed, may have timed out', {
+            correlationId, error: e.message || '', stack: e.stack || '',
+        }));
     return {
         reply,
         index,
