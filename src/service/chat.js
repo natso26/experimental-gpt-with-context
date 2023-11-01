@@ -55,7 +55,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         replyTokenCount,
     });
     // in background
-    fetch(`${process.env.BACKGROUND_TASK_HOST}/consolidate`, {
+    fetch(`${process.env.BACKGROUND_TASK_HOST}/api/consolidate`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     }).catch((e) =>
         log.log('fetch consolidate failed, may have timed out', {correlationId, e: e.message || ''}));
     // in background
-    fetch(`${process.env.BACKGROUND_TASK_HOST}/introspect`, {
+    fetch(`${process.env.BACKGROUND_TASK_HOST}/api/introspect`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
