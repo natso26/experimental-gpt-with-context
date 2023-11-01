@@ -28,7 +28,8 @@ const getLatest = wrapper.logCorrelationId('repository.memory.getLatest', async 
 });
 
 const getHistory = wrapper.logCorrelationId('repository.memory.getHistory', async (correlationId, chatId, offset, limit) => {
-    const snapshot = await coll.doc(chatId).collection('elts').where('isInternal', '!=', true)
+    const snapshot = await coll.doc(chatId).collection('elts')
+        .where('isInternal', '!=', true).orderBy('isInternal')
         .orderBy('index', 'desc').offset(offset).limit(limit).get();
     const data = snapshot.docs.map(doc => doc.data());
     return data.map(({elt}) => elt).reverse();
