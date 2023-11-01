@@ -107,7 +107,7 @@
                 replyBox.innerHTML = data.reply;
             }
         } catch (e) {
-            replyBox.innerHTML = e.message ?? 'There was an error fetching a response.';
+            replyBox.innerHTML = e.message || 'There was an error fetching a response.';
         }
         chatIdBox.disabled = false;
         questionBox.disabled = false;
