@@ -53,7 +53,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         questionEmbedding,
         reply,
         replyTokenCount,
-    });
+    }, false);
     // in background
     fetch(`${process.env.BACKGROUND_TASK_HOST}/api/consolidate`, {
         method: 'POST',

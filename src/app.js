@@ -4,6 +4,7 @@ import 'dotenv/config';
 import chat from './handler/chat.js';
 import consolidate from './handler/consolidate.js';
 import introspect from './handler/introspect.js';
+import history from './handler/history.js';
 import log from './util/log.js';
 import wrapper from './util/wrapper.js';
 
@@ -40,4 +41,5 @@ const wrapHandler = (name, handlerFn) => async (req, res) => {
 app.post('/api/chat', wrapHandler('/api/chat', chat.chat));
 app.post('/api/consolidate', wrapHandler('/api/consolidate', consolidate.consolidate));
 app.post('/api/introspect', wrapHandler('/api/introspect', introspect.introspect));
+app.post('/api/history', wrapHandler('/api/history', history.history));
 app.listen(process.env.PORT);

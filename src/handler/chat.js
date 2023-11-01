@@ -3,8 +3,8 @@ import wrapper from '../util/wrapper.js';
 
 const chat = wrapper.logCorrelationId('handler.chat.chat', async (correlationId, body) => {
     const {chatId, message} = body;
-    if (!chatId || !message) {
-        throw new Error('fields `chatId` and `message` are required');
+    if (!(typeof chatId === 'string' && chatId) || !(typeof message === 'string' && message)) {
+        throw new Error('field `chatId` or `message` is invalid');
     }
     return await chat_.chat(correlationId, chatId, message);
 });
