@@ -5,10 +5,17 @@
     <title>Experimental GPT with Context - History</title>
     <style>
         body {
+            display: flex;
+            flex-direction: column;
             font-family: monospace;
             font-size: 16px;
             margin: 16px 0 0 12px;
+            height: calc(100vh - 16px);
             color: #262626;
+        }
+
+        .div-reheight {
+            flex-grow: 1;
         }
 
         .text-box {
@@ -18,6 +25,10 @@
             border: 1px solid #bbb;
             border-radius: 8px;
             padding: 10px;
+        }
+
+        .text-box-reheight {
+            height: calc(100% - 22px);
         }
 
         .number-input {
@@ -69,6 +80,11 @@
     </div>
     <button class="button button-recolor" id="chat">Chat</button>
 </div>
+<br>
+<label for="history">History</label>
+<div class="div-reheight">
+    <textarea class="text-box text-box-reheight" disabled id="history"></textarea>
+</div>
 
 <script>
     const chatIdBox = document.getElementById('chat-id');
@@ -76,6 +92,7 @@
     const limitInput = document.getElementById('limit');
     const submitButton = document.getElementById('submit');
     const chatButton = document.getElementById('chat');
+    const historyBox = document.getElementById('history');
     const updateUrl = () => {
         const chatId = chatIdBox.value.trim();
         const offset = offsetInput.value.trim();
@@ -93,6 +110,45 @@
     chatIdBox.addEventListener('change', updateUrl);
     offsetInput.addEventListener('change', updateUrl);
     limitInput.addEventListener('change', updateUrl);
+    submitButton.addEventListener('click', async () => {
+        const chatId = chatIdBox.value.trim();
+        const offset = parseInt(offsetInput.value.trim());
+        const limit = parseInt(limitInput.value.trim());
+        chatIdBox.disabled = true;
+        offsetInput.disabled = true;
+        limitInput.disabled = true;
+        submitButton.disabled = true;
+        try {
+            const resp = await fetch('/api/history', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    chatId, offset, limit,
+                }),
+            });
+            if (!resp.ok) {
+                const error = await resp.json();
+                console.log({error});
+                historyBox.innerHTML = JSON.stringify(error, null, 2);
+            } else {
+                const data = await resp.json();
+                console.log({data});
+                let history = '';
+                for (const [i, {question, reply}] of data.history.reverse().entries()) {
+                    history += `=== Question ${offset + i} ===\n\n${question}\n\n=== Reply ${offset + i} ===\n\n${reply}\n\n\n`;
+                }
+                historyBox.innerHTML = history;
+            }
+        } catch (e) {
+            historyBox.innerHTML = e.message || 'There was an error fetching a response.';
+        }
+        chatIdBox.disabled = false;
+        offsetInput.disabled = false;
+        limitInput.disabled = false;
+        submitButton.disabled = false;
+    });
     chatButton.addEventListener('click', () => {
         const chatId = chatIdBox.value.trim();
         window.location.href = `/?chatId=${chatId}`;
