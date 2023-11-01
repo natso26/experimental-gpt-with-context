@@ -13,7 +13,7 @@ const logCorrelationId = (name, fn) => {
             const elapsed = (Date.now() - start) / 1000;
             log.log(`[Failed] ${name}, elapsed: ${elapsed.toFixed(3)} s`, {
                 correlationId, elapsed,
-                error: e.message ?? '', stack: e.stack ?? '',
+                error: e.message || '', stack: e.stack || '',
             });
             throw e;
         }
