@@ -4,6 +4,7 @@ import 'dotenv/config';
 import chat from './handler/chat.js';
 import consolidate from './handler/consolidate.js';
 import introspect from './handler/introspect.js';
+import imagine from './handler/imagine.js';
 import history from './handler/history.js';
 import log from './util/log.js';
 import wrapper from './util/wrapper.js';
@@ -31,15 +32,21 @@ app.get('/api/ping', async (req, res) => {
 const wrapHandler = (name, handlerFn) => async (req, res) => {
     await wrapper.logCorrelationId(name, async (correlationId) => {
         try {
-            const ret = await handlerFn(correlationId, req.body);
+            const {body} = req;
+            log.log(`${name} ${correlationId} request body`, {name, correlationId, body});
+            const ret = await handlerFn(correlationId, body);
+            log.log(`${name} ${correlationId} response body`, {name, correlationId, ret});
             res.json(ret);
         } catch (e) {
-            res.status(500).json({error: e.message ?? '', stack: e.stack ?? ''});
+            const errRet = {error: e.message ?? '', stack: e.stack ?? ''};
+            log.error(`${name} ${correlationId} response error`, {name, correlationId, errRet});
+            res.status(500).json(errRet);
         }
     })(req.correlationId);
 };
 app.post('/api/chat', wrapHandler('/api/chat', chat.chat));
 app.post('/api/consolidate', wrapHandler('/api/consolidate', consolidate.consolidate));
 app.post('/api/introspect', wrapHandler('/api/introspect', introspect.introspect));
+app.post('/api/imagine', wrapHandler('/api/imagine', imagine.imagine));
 app.post('/api/history', wrapHandler('/api/history', history.history));
 app.listen(process.env.PORT);
