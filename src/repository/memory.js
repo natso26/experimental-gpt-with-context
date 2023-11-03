@@ -1,4 +1,5 @@
 import firestore from '@google-cloud/firestore';
+import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
 const db = new firestore.Firestore();
@@ -15,6 +16,21 @@ const add = wrapper.logCorrelationId('repository.memory.add', async (correlation
             timestamp,
             isInternal,
             elt,
+        });
+        return index;
+    });
+});
+
+const addImagination = wrapper.logCorrelationId('repository.memory.addImagination', async (correlationId, chatId, consolidation) => {
+    const imaginationsColl = coll.doc(chatId).collection('imaginations');
+    const timestamp = new Date();
+    return await db.runTransaction(async (txn) => {
+        const snapshot = await txn.get(imaginationsColl.orderBy('index', 'desc').limit(1));
+        const index = snapshot.empty ? 0 : snapshot.docs[0].data().index + 1;
+        await txn.set(imaginationsColl.doc(), {
+            index,
+            timestamp,
+            consolidation,
         });
         return index;
     });
@@ -47,7 +63,8 @@ const shortTermSearch = wrapper.logCorrelationId('repository.memory.shortTermSea
 const longTermSearch = wrapper.logCorrelationId('repository.memory.longTermSearch', async (correlationId, chatId, maximizingObjective, numResults) => {
     const data = [];
     for (let lvl = 0; lvl <= 9; lvl++) {
-        const snapshot = await coll.doc(chatId).collection(`${lvl}-consolidations`)
+        const snapshot = await coll.doc(chatId).collection(
+            lvl < 9 ? `${lvl}-consolidations` : 'imaginations')
             .orderBy('index', 'desc').limit(63).get();
         if (snapshot.empty) {
             continue;
@@ -56,17 +73,19 @@ const longTermSearch = wrapper.logCorrelationId('repository.memory.longTermSearc
         const lvlData = rawLvlData.filter(({index}) => index > rawLvlData[rawLvlData.length - 1].index - 63);
         data.push(...lvlData);
     }
-    return data.map(({consolidation}) => [consolidation, maximizingObjective(consolidation)])
+    const getConsolidations = () => data.map(({consolidation}) => consolidation);
+    return data.map(({consolidation}) => [consolidation, maximizingObjective(getConsolidations, consolidation)])
         .sort((a, b) => b[1] - a[1])
         .slice(0, numResults);
 });
 
 const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', async (correlationId, chatId, consolidationFn) => {
-    for (let lvl = 0; lvl <= 9; lvl++) {
+    const ret = [];
+    for (let lvl = 0; lvl <= 8; lvl++) {
         const prevLvlColl = lvl ? await coll.doc(chatId).collection(`${lvl - 1}-consolidations`)
             : coll.doc(chatId).collection('elts');
         const lvlColl = coll.doc(chatId).collection(`${lvl}-consolidations`);
-        const res = await db.runTransaction(async (txn) => {
+        const txnRes = await db.runTransaction(async (txn) => {
             const s = await txn.get(prevLvlColl.orderBy('index', 'desc').limit(1));
             const latestPrevLvlIndex = s.empty ? -1 : s.docs[0].data().index;
             const s2 = await txn.get(lvlColl.orderBy('index', 'desc').limit(1));
@@ -92,12 +111,55 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
                     index: i,
                     consolidation,
                 });
+                ret.push({lvl, index: i, consolidation});
             }
         });
-        if (res === 'final-level') {
+        if (txnRes === 'final-level') {
             break;
         }
     }
+    return ret;
 });
 
-export default {add, getLatest, getHistory, shortTermSearch, longTermSearch, consolidate};
+const scheduleImagination = wrapper.logCorrelationId('repository.memory.scheduleImagination', async (correlationId, chatId, getNext) => {
+    return await db.runTransaction(async (txn) => {
+        const doc = coll.doc(chatId);
+        const s = await txn.get(doc);
+        const curr = s.data()?.scheduledImagination?.toDate() || null;
+        const scheduledImagination = getNext(curr);
+        if (scheduledImagination !== curr) {
+            await txn.set(doc,
+                {scheduledImagination: scheduledImagination || firestore.FieldValue.delete()}, {merge: true});
+        }
+        return scheduledImagination;
+    });
+});
+
+const imagine = wrapper.logCorrelationId('repository.memory.imagine', async (correlationId, refTime, imaginationFn) => {
+    const s = await coll.where('scheduledImagination', '<=', firestore.Timestamp.fromDate(refTime))
+        .orderBy('scheduledImagination').get();
+    const chatIds = s.docs.map(doc => doc.id);
+    log.log(`imagine for chat IDs: ${chatIds}`, {correlationId, chatIds});
+    const ret = {};
+    for (const chatId of chatIds) {
+        const out = await db.runTransaction(async (txn) => {
+            const doc = coll.doc(chatId);
+            const scheduledImagination = (await txn.get(doc)).data()?.scheduledImagination?.toDate();
+            if (!(scheduledImagination && scheduledImagination <= refTime)) {
+                log.log(`chat ID ${chatId} scheduled imagination has already changed and so will be skipped`,
+                    {correlationId, chatId, scheduledImagination, refTime});
+                return;
+            }
+            const out = await imaginationFn(chatId);
+            await txn.set(doc, {scheduledImagination: firestore.FieldValue.delete()}, {merge: true});
+            return out;
+        });
+        ret[chatId] = out;
+    }
+    return ret;
+});
+
+export default {
+    add, addImagination, getLatest, getHistory, shortTermSearch, longTermSearch,
+    consolidate, scheduleImagination, imagine,
+};
