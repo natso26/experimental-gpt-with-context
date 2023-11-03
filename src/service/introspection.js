@@ -13,7 +13,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
     const [rawElts, latestIndex] = await memory.getLatest(correlationId, chatId, 12);
     if (latestIndex !== index) {
         log.log('do not introspect due to index being outdated', {correlationId, index, latestIndex});
-        return;
+        return {introspection: null};
     }
     const unslicedElts = rawElts.filter(({introspection}) => !introspection)
         .map(({question, reply}) => ({question, reply}));
@@ -25,11 +25,15 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
     }]);
     const introspectionEmbedding = await embedding.embed(correlationId, introspection);
     const introspectionTokenCount = await tokenizer.countTokens(correlationId, introspection);
-    await memory.add(correlationId, chatId, {
+    const introspectionIndex = await memory.add(correlationId, chatId, {
         introspection,
         introspectionTokenCount,
         introspectionEmbedding,
     }, true);
+    return {
+        introspectionIndex,
+        introspection,
+    };
 });
 
 export default {introspect};

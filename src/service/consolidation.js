@@ -6,7 +6,7 @@ import wrapper from '../util/wrapper.js';
 
 const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate', async (correlationId, chatId) => {
     log.log('consolidation parameters', {correlationId, chatId});
-    await memory.consolidate(correlationId, chatId, async (lvl, raw) => {
+    const rawConsolidationRes = await memory.consolidate(correlationId, chatId, async (lvl, raw) => {
         const input = lvl ? raw.map(({summary}) => summary)
             : raw.map(({question, reply, introspection}) =>
                 !introspection ? {question, reply} : {introspection});
@@ -18,6 +18,13 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         const summaryEmbedding = await embedding.embed(correlationId, summary);
         return {summary, summaryEmbedding};
     });
+    const consolidationRes = rawConsolidationRes.map(({lvl, index, consolidation}) => {
+        const {summary} = consolidation;
+        return {lvl, index, summary};
+    });
+    return {
+        consolidationRes,
+    };
 });
 
 export default {consolidate};

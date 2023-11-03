@@ -2,6 +2,7 @@ import tokenizer from '../repository/tokenizer.js';
 import embedding from '../repository/embedding.js';
 import memory from '../repository/memory.js';
 import chat_ from '../repository/chat.js';
+import common from './common.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
@@ -20,17 +21,19 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             return 99 - i;
         }
         const targetEmbedding = elt.questionEmbedding || elt.introspectionEmbedding;
-        return 10 * cosineSimilarity(questionEmbedding, targetEmbedding) * discount;
+        return 10 * common.cosineSimilarity(questionEmbedding, targetEmbedding) * discount;
     }, 7);
     const shortTermContext = rawShortTermContext.reverse().map(
         ([{question, reply, introspection}, relevance]) =>
             !introspection ? {relevance, question, reply} : {relevance, introspection});
     log.log('searched short-term context', {correlationId, shortTermContext});
-    const rawLongTermContext = await memory.longTermSearch(correlationId, chatId, (consolidation) => {
-        return cosineSimilarity(questionEmbedding, consolidation.summaryEmbedding);
+    const rawLongTermContext = await memory.longTermSearch(correlationId, chatId, (_, consolidation) => {
+        const targetEmbedding = consolidation.summaryEmbedding || consolidation.imaginationEmbedding;
+        return common.cosineSimilarity(questionEmbedding, targetEmbedding);
     }, 2);
     const longTermContext = rawLongTermContext.reverse().map(
-        ([{summary},]) => ({summary}));
+        ([{summary, imagination},]) =>
+            !imagination ? {summary} : {imagination});
     log.log('searched long-term context', {correlationId, longTermContext});
     const messages = [
         {
@@ -78,15 +81,29 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         log.log('fetch introspect failed, may have timed out', {
             correlationId, error: e.message || '', stack: e.stack || '',
         }));
+    const scheduledImagination = await memory.scheduleImagination(correlationId, chatId, (curr) => {
+        if (curr) {
+            return curr;
+        }
+        const scheduledImagination = new Date(
+            new Date().getTime() + 6 * 3600 * 1000 + Math.random() * 6 * 3600 * 1000);
+        log.log('scheduled imagination', {correlationId, chatId, scheduledImagination});
+        return scheduledImagination;
+    }).catch((e) => {
+        log.log('schedule imagination failed, continue since it is low-priority task', {
+            correlationId, error: e.message || '', stack: e.stack || '',
+        });
+        return null;
+    });
     return {
-        reply,
         index,
+        reply,
         shortTermContext,
         longTermContext,
+        scheduledImagination,
     };
 });
 
-const cosineSimilarity = (a, b) => a.map((e, i) => e * b[i]).reduce((x, y) => x + y);
 const recencyDiscount = (i, ms) => {
     if (i < 2) {
         return null;
