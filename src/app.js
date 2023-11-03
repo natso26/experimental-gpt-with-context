@@ -39,7 +39,7 @@ const wrapHandler = (name, handlerFn) => async (req, res) => {
             res.json(ret);
         } catch (e) {
             const errRet = {error: e.message ?? '', stack: e.stack ?? ''};
-            log.error(`${name} ${correlationId} response error`, {name, correlationId, errRet});
+            log.log(`${name} ${correlationId} response error`, {name, correlationId, errRet});
             res.status(500).json(errRet);
         }
     })(req.correlationId);
