@@ -11,10 +11,14 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
             : raw.map(({question, reply, introspection}) =>
                 !introspection ? {question, reply} : {introspection});
         log.log('consolidation input', {correlationId, lvl, input});
-        const summary = await chat.chat(correlationId, [{
-            role: 'system',
-            content: `summarize ${JSON.stringify(input)}`,
-        }]);
+        const messages = [
+            {
+                role: 'system',
+                content: `summarize ${JSON.stringify(input)}`,
+            },
+        ];
+        log.log('consolidation messages', {correlationId, messages});
+        const summary = await chat.chat(correlationId, messages);
         const summaryEmbedding = await embedding.embed(correlationId, summary);
         return {summary, summaryEmbedding};
     });
