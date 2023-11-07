@@ -19,10 +19,14 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
         .map(({question, reply}) => ({question, reply}));
     const elts = unslicedElts.length <= 6 ? unslicedElts : unslicedElts.slice(unslicedElts.length - 6);
     log.log('elements', {correlationId, elts});
-    const introspection = await chat.chat(correlationId, [{
-        role: 'system',
-        content: `short-term memory: ${JSON.stringify(elts)}\nintrospect`,
-    }]);
+    const messages = [
+        {
+            role: 'system',
+            content: `short-term memory: ${JSON.stringify(elts)}\nintrospect`,
+        },
+    ];
+    log.log('introspection messages', {correlationId, messages});
+    const introspection = await chat.chat(correlationId, messages);
     const introspectionEmbedding = await embedding.embed(correlationId, introspection);
     const introspectionTokenCount = await tokenizer.countTokens(correlationId, introspection);
     const introspectionIndex = await memory.add(correlationId, chatId, {
