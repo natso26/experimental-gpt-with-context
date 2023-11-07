@@ -8,7 +8,7 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
             'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-            model: 'gpt-4',
+            model: 'gpt-4-1106-preview',
             messages,
             temperature: 1,
             max_tokens: 512,
