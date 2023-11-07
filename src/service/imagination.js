@@ -38,10 +38,7 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
             },
         ];
         log.log('imagination messages', {correlationId, chatId, messages});
-        const imagination = await chat.chat(correlationId, [{
-            role: 'system',
-            content: `long-term memory: ${JSON.stringify(longTermContext)}`,
-        }]);
+        const imagination = await chat.chat(correlationId, messages);
         const imaginationEmbedding = await embedding.embed(correlationId, imagination);
         const index = await memory.addImagination(correlationId, chatId, {
             imagination,
