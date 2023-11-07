@@ -34,7 +34,7 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
         const messages = [
             {
                 role: 'system',
-                content: `long-term memory: ${JSON.stringify(longTermContext)}`,
+                content: `long-term memory: ${JSON.stringify(longTermContext)}\nextrapolate`,
             },
         ];
         log.log('imagination messages', {correlationId, chatId, messages});

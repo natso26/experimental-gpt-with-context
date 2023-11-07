@@ -22,7 +22,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
     const messages = [
         {
             role: 'system',
-            content: `short-term memory: ${JSON.stringify(elts)}\nintrospect`,
+            content: `short-term memory: ${JSON.stringify(elts)}\nintrospection`,
         },
     ];
     log.log('introspection messages', {correlationId, messages});
