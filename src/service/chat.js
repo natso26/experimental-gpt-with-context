@@ -117,11 +117,7 @@ const recencyDiscount = (i, ms) => {
 const chatMessages = (shortTermContext, longTermContext, message) => [
     {
         role: 'system',
-        content: `This is a user-facing system.\nlong-term memory: ${JSON.stringify(longTermContext)}\nshort-term memory: ${JSON.stringify(shortTermContext)}`,
-    },
-    {
-        role: 'user',
-        content: message,
+        content: `This is an external system.\nlong-term memory: ${JSON.stringify(longTermContext)}\nshort-term memory: ${JSON.stringify(shortTermContext)}\nuser: ${JSON.stringify(message)}`,
     },
 ];
 
