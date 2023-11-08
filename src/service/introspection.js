@@ -19,12 +19,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
         .map(({question, reply}) => ({question, reply}));
     const elts = unslicedElts.length <= 6 ? unslicedElts : unslicedElts.slice(unslicedElts.length - 6);
     log.log('elements', {correlationId, elts});
-    const messages = [
-        {
-            role: 'system',
-            content: `short-term memory: ${JSON.stringify(elts)}\nintrospection`,
-        },
-    ];
+    const messages = chatMessages(elts);
     log.log('introspection messages', {correlationId, messages});
     const introspection = await chat.chat(correlationId, messages);
     const introspectionEmbedding = await embedding.embed(correlationId, introspection);
@@ -39,5 +34,12 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
         introspection,
     };
 });
+
+const chatMessages = (elts) => [
+    {
+        role: 'system',
+        content: `This is an internal system.\nshort-term memory: ${JSON.stringify(elts)}\nthoughts`,
+    },
+];
 
 export default {introspect};

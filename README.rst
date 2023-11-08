@@ -52,6 +52,8 @@ Diagram
 
 .. code-block:: none
 
+                       /---
+                      v   |
    Short-term memory: (question, reply) <-> introspection
                       ^          ^         /
                       |      /---+---------
@@ -76,3 +78,10 @@ Infrastructure
 - Frontend consists of 2 "static" HTML pages: ``/`` for chat
   and ``/history`` for history. We have minimal but effective reactivity
   via vanilla JS.
+
+
+Does it work?
+-------------
+
+Yes. Already much better than expected with ``gpt-4-0613``, it seems exponentially
+better with ``gpt-4-1106-preview``.
