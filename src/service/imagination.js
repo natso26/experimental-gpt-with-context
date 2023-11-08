@@ -31,12 +31,7 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
         const longTermContext = rawLongTermContext.map(
             ([{summary, imagination},]) => !imagination ? summary : imagination);
         log.log(`imagination context for chat ID ${chatId}`, {correlationId, chatId, longTermContext});
-        const messages = [
-            {
-                role: 'system',
-                content: `long-term memory: ${JSON.stringify(longTermContext)}\nextrapolate`,
-            },
-        ];
+        const messages = chatMessages(longTermContext);
         log.log('imagination messages', {correlationId, chatId, messages});
         const imagination = await chat.chat(correlationId, messages);
         const imaginationEmbedding = await embedding.embed(correlationId, imagination);
@@ -50,5 +45,12 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
         imagineRes,
     };
 });
+
+const chatMessages = (longTermContext) => [
+    {
+        role: 'system',
+        content: `This is an internal system.\nlong-term memory: ${JSON.stringify(longTermContext)}\nthoughts`,
+    },
+];
 
 export default {imagine};

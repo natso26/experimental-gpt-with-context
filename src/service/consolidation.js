@@ -11,12 +11,7 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
             : raw.map(({question, reply, introspection}) =>
                 !introspection ? {question, reply} : {introspection});
         log.log('consolidation input', {correlationId, lvl, input});
-        const messages = [
-            {
-                role: 'system',
-                content: `summarize ${JSON.stringify(input)}`,
-            },
-        ];
+        const messages = chatMessages(input);
         log.log('consolidation messages', {correlationId, messages});
         const summary = await chat.chat(correlationId, messages);
         const summaryEmbedding = await embedding.embed(correlationId, summary);
@@ -30,5 +25,12 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         consolidationRes,
     };
 });
+
+const chatMessages = (input) => [
+    {
+        role: 'system',
+        content: `This is an internal system.\nsummarize ${JSON.stringify(input)}`,
+    },
+];
 
 export default {consolidate};

@@ -35,16 +35,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         ([{summary, imagination},]) =>
             !imagination ? {summary} : {imagination});
     log.log('searched long-term context', {correlationId, longTermContext});
-    const messages = [
-        {
-            role: 'system',
-            content: `long-term memory: ${JSON.stringify(longTermContext)}\nshort-term memory: ${JSON.stringify(shortTermContext)}`,
-        },
-        {
-            role: 'user',
-            content: message,
-        },
-    ];
+    const messages = chatMessages(shortTermContext, longTermContext, message);
     log.log('chat messages', {correlationId, messages});
     const reply = await chat_.chat(correlationId, messages);
     log.log('chat reply', {correlationId, reply});
@@ -122,5 +113,16 @@ const recencyDiscount = (i, ms) => {
     }
     return (i + 1.2 + 1.10 * timePenalty) ** -.43;
 };
+
+const chatMessages = (shortTermContext, longTermContext, message) => [
+    {
+        role: 'system',
+        content: `This is a user-facing system.\nlong-term memory: ${JSON.stringify(longTermContext)}\nshort-term memory: ${JSON.stringify(shortTermContext)}`,
+    },
+    {
+        role: 'user',
+        content: message,
+    },
+];
 
 export default {chat};
