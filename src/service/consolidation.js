@@ -10,9 +10,9 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         const input = lvl ? raw.map(({summary}) => summary)
             : raw.map(({question, reply, introspection}) =>
                 !introspection ? {question, reply} : {introspection});
-        log.log('consolidation input', {correlationId, lvl, input});
+        log.log('consolidation input', {correlationId, chatId, lvl, input});
         const messages = chatMessages(input);
-        log.log('consolidation messages', {correlationId, messages});
+        log.log('consolidation messages', {correlationId, chatId, messages});
         const summary = await chat.chat(correlationId, messages);
         const summaryEmbedding = await embedding.embed(correlationId, summary);
         return {summary, summaryEmbedding};

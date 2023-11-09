@@ -8,7 +8,7 @@ import wrapper from '../util/wrapper.js';
 const introspect = wrapper.logCorrelationId('service.introspection.introspect', async (correlationId, chatId, index) => {
     log.log('introspection parameters', {correlationId, chatId, index});
     const waitTime = Math.exp(Math.log(3 * 60) + Math.random() * Math.log(5));
-    log.log('wait time', {correlationId, waitTime});
+    log.log('wait time', {correlationId, chatId, waitTime});
     await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
     const [rawElts, latestIndex] = await memory.getLatest(correlationId, chatId, 12);
     if (latestIndex !== index) {
@@ -18,9 +18,9 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
     const unslicedElts = rawElts.filter(({introspection}) => !introspection)
         .map(({question, reply}) => ({question, reply}));
     const elts = unslicedElts.length <= 6 ? unslicedElts : unslicedElts.slice(unslicedElts.length - 6);
-    log.log('elements', {correlationId, elts});
+    log.log('elements', {correlationId, chatId, elts});
     const messages = chatMessages(elts);
-    log.log('introspection messages', {correlationId, messages});
+    log.log('introspection messages', {correlationId, chatId, messages});
     const introspection = await chat.chat(correlationId, messages);
     const introspectionEmbedding = await embedding.embed(correlationId, introspection);
     const introspectionTokenCount = await tokenizer.countTokens(correlationId, introspection);
@@ -32,6 +32,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
     return {
         introspectionIndex,
         introspection,
+        introspectionTokenCount,
     };
 });
 

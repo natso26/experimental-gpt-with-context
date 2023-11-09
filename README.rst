@@ -83,5 +83,4 @@ Infrastructure
 Does it work?
 -------------
 
-Yes. Already much better than expected with ``gpt-4-0613``, it seems exponentially
-better with ``gpt-4-1106-preview``.
+Yes.

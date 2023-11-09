@@ -9,7 +9,7 @@ import wrapper from '../util/wrapper.js';
 const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId, chatId, message) => {
     log.log('chat parameters', {correlationId, chatId, question: message});
     const messageTokenCount = await tokenizer.countTokens(correlationId, message);
-    log.log('message token count', {correlationId, messageTokenCount});
+    log.log('message token count', {correlationId, chatId, messageTokenCount});
     if (messageTokenCount > 256) {
         throw new Error(`message exceeds maximum length of 256 tokens: ${messageTokenCount} tokens`);
     }
@@ -26,7 +26,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     const shortTermContext = rawShortTermContext.reverse().map(
         ([{question, reply, introspection}, relevance]) =>
             !introspection ? {relevance, question, reply} : {relevance, introspection});
-    log.log('searched short-term context', {correlationId, shortTermContext});
+    log.log('searched short-term context', {correlationId, chatId, shortTermContext});
     const rawLongTermContext = await memory.longTermSearch(correlationId, chatId, (_, consolidation) => {
         const targetEmbedding = consolidation.summaryEmbedding || consolidation.imaginationEmbedding;
         return common.cosineSimilarity(questionEmbedding, targetEmbedding);
@@ -34,13 +34,13 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     const longTermContext = rawLongTermContext.reverse().map(
         ([{summary, imagination},]) =>
             !imagination ? {summary} : {imagination});
-    log.log('searched long-term context', {correlationId, longTermContext});
+    log.log('searched long-term context', {correlationId, chatId, longTermContext});
     const messages = chatMessages(shortTermContext, longTermContext, message);
-    log.log('chat messages', {correlationId, messages});
+    log.log('chat messages', {correlationId, chatId, messages});
     const reply = await chat_.chat(correlationId, messages);
-    log.log('chat reply', {correlationId, reply});
+    log.log('chat reply', {correlationId, chatId, reply});
     const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
-    log.log('reply token count', {correlationId, replyTokenCount});
+    log.log('reply token count', {correlationId, chatId, replyTokenCount});
     const index = await memory.add(correlationId, chatId, {
         question: message,
         questionTokenCount: messageTokenCount,
@@ -58,7 +58,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         body: JSON.stringify({chatId}),
     }).catch((e) =>
         log.log('fetch consolidate failed, may have timed out', {
-            correlationId, error: e.message || '', stack: e.stack || '',
+            correlationId, chatId, error: e.message || '', stack: e.stack || '',
         }));
     // in background
     fetch(`${process.env.BACKGROUND_TASK_HOST}/api/introspect`, {
@@ -70,7 +70,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         body: JSON.stringify({chatId, index}),
     }).catch((e) =>
         log.log('fetch introspect failed, may have timed out', {
-            correlationId, error: e.message || '', stack: e.stack || '',
+            correlationId, chatId, error: e.message || '', stack: e.stack || '',
         }));
     const scheduledImagination = await memory.scheduleImagination(correlationId, chatId, (curr) => {
         if (curr) {
@@ -82,13 +82,14 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         return scheduledImagination;
     }).catch((e) => {
         log.log('schedule imagination failed, continue since it is low-priority task', {
-            correlationId, error: e.message || '', stack: e.stack || '',
+            correlationId, chatId, error: e.message || '', stack: e.stack || '',
         });
         return null;
     });
     return {
         index,
         reply,
+        replyTokenCount,
         shortTermContext,
         longTermContext,
         scheduledImagination,
