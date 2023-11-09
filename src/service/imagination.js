@@ -1,6 +1,4 @@
-import embedding from '../repository/embedding.js';
 import memory from '../repository/memory.js';
-import chat from '../repository/chat.js';
 import common from './common.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
@@ -33,8 +31,8 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
         log.log(`imagination context for chat ID ${chatId}`, {correlationId, chatId, longTermContext});
         const messages = chatMessages(longTermContext);
         log.log('imagination messages', {correlationId, chatId, messages});
-        const imagination = await chat.chat(correlationId, messages);
-        const imaginationEmbedding = await embedding.embed(correlationId, imagination);
+        const imagination = await common.chatWithRetry(correlationId, messages);
+        const imaginationEmbedding = await common.embedWithRetry(correlationId, imagination);
         const index = await memory.addImagination(correlationId, chatId, {
             imagination,
             imaginationEmbedding,

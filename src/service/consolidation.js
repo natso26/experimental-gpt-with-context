@@ -1,6 +1,5 @@
-import embedding from '../repository/embedding.js';
 import memory from '../repository/memory.js';
-import chat from '../repository/chat.js';
+import common from './common.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
@@ -13,8 +12,8 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         log.log('consolidation input', {correlationId, chatId, lvl, input});
         const messages = chatMessages(input);
         log.log('consolidation messages', {correlationId, chatId, messages});
-        const summary = await chat.chat(correlationId, messages);
-        const summaryEmbedding = await embedding.embed(correlationId, summary);
+        const summary = await common.chatWithRetry(correlationId, messages);
+        const summaryEmbedding = await common.embedWithRetry(correlationId, summary);
         return {summary, summaryEmbedding};
     });
     const consolidationRes = rawConsolidationRes.map(({lvl, index, consolidation}) => {
