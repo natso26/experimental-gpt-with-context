@@ -1,7 +1,6 @@
 import tokenizer from '../repository/tokenizer.js';
-import embedding from '../repository/embedding.js';
 import memory from '../repository/memory.js';
-import chat from '../repository/chat.js';
+import common from './common.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
@@ -21,8 +20,8 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
     log.log('elements', {correlationId, chatId, elts});
     const messages = chatMessages(elts);
     log.log('introspection messages', {correlationId, chatId, messages});
-    const introspection = await chat.chat(correlationId, messages);
-    const introspectionEmbedding = await embedding.embed(correlationId, introspection);
+    const introspection = await common.chatWithRetry(correlationId, messages);
+    const introspectionEmbedding = await common.embedWithRetry(correlationId, introspection);
     const introspectionTokenCount = await tokenizer.countTokens(correlationId, introspection);
     const introspectionIndex = await memory.add(correlationId, chatId, {
         introspection,
