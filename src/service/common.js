@@ -17,7 +17,7 @@ const retry = (fn, onError) => async (...args) => {
             cnt++;
         }
     }
-}
+};
 
 const embedWithRetry = retry(embedding.embed, (e, cnt) => {
     log.log(`embeddings failed, retry count: ${cnt}`, {

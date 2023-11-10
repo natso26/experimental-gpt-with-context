@@ -1,7 +1,8 @@
+import common from './common.js';
 import wrapper from '../util/wrapper.js';
 
 const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlationId, messages) => {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await common.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -16,7 +17,7 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
             frequency_penalty: 0,
             presence_penalty: 0,
         }),
-    });
+    }, 120 * 1000);
     if (!res.ok) {
         throw new Error(`chat completions error, status: ${res.status}`);
     }
