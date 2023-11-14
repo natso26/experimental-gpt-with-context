@@ -28,7 +28,7 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
 const chatMessages = (input) => [
     {
         role: 'system',
-        content: `This is an internal system.\n${JSON.stringify(input)}\nsummarize`,
+        content: `You are GPT. This is an internal system.\n${JSON.stringify(input)}\nsummarize`,
     },
 ];
 
