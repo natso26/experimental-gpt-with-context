@@ -38,7 +38,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
 const chatMessages = (elts) => [
     {
         role: 'system',
-        content: `This is an internal system.\nshort-term memory: ${JSON.stringify(elts)}\nthoughts`,
+        content: `You are GPT. This is an internal system.\nshort-term memory: ${JSON.stringify(elts)}\nthoughts`,
     },
 ];
 

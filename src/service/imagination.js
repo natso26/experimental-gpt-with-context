@@ -47,7 +47,7 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
 const chatMessages = (longTermContext) => [
     {
         role: 'system',
-        content: `This is an internal system.\nlong-term memory: ${JSON.stringify(longTermContext)}\nthoughts`,
+        content: `You are GPT. This is an internal system.\nlong-term memory: ${JSON.stringify(longTermContext)}\nthoughts`,
     },
 ];
 
