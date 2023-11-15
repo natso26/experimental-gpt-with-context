@@ -34,8 +34,8 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
     log.log('introspection context', {correlationId, chatId, context});
     const prompt = chatPrompt(context);
     log.log('introspection prompt', {correlationId, chatId, prompt});
-    const introspection = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT);
-    const introspectionEmbedding = await common.embedWithRetry(correlationId, introspection);
+    const {content: introspection} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
+    const {embedding: introspectionEmbedding} = await common.embedWithRetry(correlationId, introspection);
     const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
     const introspectionTokenCount = await tokenizer.countTokens(correlationId, introspection);
     const {index: introspectionIndex, timestamp} = await memory.add(correlationId, chatId, {
@@ -61,6 +61,8 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
 });
 
 const chatPrompt = (context) =>
-    `You are GPT. This is an internal system.\nshort-term memory: ${JSON.stringify(context)}\nthoughts`;
+    `You are GPT. This is an internal system.\n`
+    + `short-term memory: ${JSON.stringify(context)}\n`
+    + `thoughts`;
 
 export default {introspect};
