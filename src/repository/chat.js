@@ -1,4 +1,5 @@
 import fetch_ from '../util/fetch.js';
+import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
 const URL = 'https://api.openai.com/v1/chat/completions';
@@ -6,7 +7,13 @@ const MODEL = 'gpt-4-1106-preview';
 const TOP_P = .001;
 const TIMEOUT = parseInt(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
 
-const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlationId, content, maxTokens) => {
+const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlationId, content, maxTokens, functions) => {
+    const toolsInfo = !functions.length ? {} : {
+        tools: functions.map((f) => ({
+            type: 'function',
+            function: f,
+        })),
+    };
     const res = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -23,6 +30,7 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
                     content,
                 },
             ],
+            ...toolsInfo,
             temperature: 1,
             max_tokens: maxTokens,
             top_p: TOP_P,
@@ -34,7 +42,31 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
         throw new Error(`chat completions api error, status: ${res.status}`);
     }
     const data = await res.json();
-    return data.choices[0].message.content;
+    const {content: content_, tool_calls} = data.choices[0].message;
+    if (content_) {
+        return {
+            content: content_,
+        };
+    }
+    const functionCalls = tool_calls.map((call) => {
+        const {name, arguments: rawArgs} = call.function;
+        try {
+            const args = JSON.parse(rawArgs);
+            return {
+                name,
+                args,
+            };
+        } catch (e) {
+            log.log(`chat completions api: model gave invalid json for args of function: ${name}`,
+                {name, rawArgs, error: e.message || '', stack: e.stack || ''});
+            return {
+                name,
+            };
+        }
+    });
+    return {
+        functionCalls,
+    };
 });
 
 export default {chat};

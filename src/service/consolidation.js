@@ -23,8 +23,8 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         log.log('consolidation context', {correlationId, chatId, lvl, context});
         const prompt = chatPrompt(context);
         log.log('consolidation prompt', {correlationId, chatId, prompt});
-        const summary = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT);
-        const summaryEmbedding = await common.embedWithRetry(correlationId, summary);
+        const {content: summary} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
+        const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
         const summaryTokenCount = await tokenizer.countTokens(correlationId, summary);
         return {
@@ -62,6 +62,8 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
 });
 
 const chatPrompt = (context) =>
-    `You are GPT. This is an internal system.\n${JSON.stringify(context)}\nsummarize`;
+    `You are GPT. This is an internal system.\n`
+    + `${JSON.stringify(context)}\n`
+    + `summarize`;
 
 export default {consolidate};

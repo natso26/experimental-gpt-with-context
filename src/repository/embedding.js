@@ -21,7 +21,10 @@ const embed = wrapper.logCorrelationId('repository.embedding.embed', async (corr
         throw new Error(`embeddings api error, status: ${res.status}`);
     }
     const data = await res.json();
-    return data.data[0].embedding;
+    const {embedding} = data.data[0];
+    return {
+        embedding,
+    }
 });
 
 export default {embed};
