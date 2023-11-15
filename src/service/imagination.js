@@ -45,8 +45,8 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
         log.log(`imagination context for chat ID ${chatId}`, {correlationId, chatId, context});
         const prompt = chatPrompt(context);
         log.log('imagination prompt', {correlationId, chatId, prompt});
-        const imagination = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT);
-        const imaginationEmbedding = await common.embedWithRetry(correlationId, imagination);
+        const {content: imagination} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
+        const {embedding: imaginationEmbedding} = await common.embedWithRetry(correlationId, imagination);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
         const imaginationTokenCount = await tokenizer.countTokens(correlationId, imagination);
         const {index, timestamp} = await memory.addImagination(correlationId, chatId, {
@@ -75,6 +75,8 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
 });
 
 const chatPrompt = (context) =>
-    `You are GPT. This is an internal system.\nlong-term memory: ${JSON.stringify(context)}\nthoughts`;
+    `You are GPT. This is an internal system.\n`
+    + `long-term memory: ${JSON.stringify(context)}\n`
+    + `thoughts`;
 
 export default {imagine};
