@@ -1,4 +1,4 @@
-const indent = process.env.LOG_INDENT ? parseInt(process.env.LOG_INDENT) : null;
+const INDENT = process.env.LOG_INDENT ? parseInt(process.env.LOG_INDENT) : null;
 
 const log = (message, extra = {}) => {
     if ('time' in extra || 'message' in extra) {
@@ -9,7 +9,7 @@ const log = (message, extra = {}) => {
         message,
         ...extra,
     };
-    console.log(JSON.stringify(entry, null, indent));
+    console.log(JSON.stringify(entry, null, INDENT));
 };
 
 export default {log};

@@ -2,6 +2,18 @@ import embedding from '../repository/embedding.js';
 import chat from '../repository/chat.js';
 import log from '../util/log.js';
 
+const QUESTION_FIELD = 'question';
+const QUESTION_EMBEDDING_FIELD = 'questionEmbedding';
+const REPLY_FIELD = 'reply';
+const SUMMARY_FIELD = 'summary';
+const SUMMARY_EMBEDDING_FIELD = 'summaryEmbedding';
+const INTROSPECTION_FIELD = 'introspection';
+const INTROSPECTION_EMBEDDING_FIELD = 'introspectionEmbedding';
+const IMAGINATION_FIELD = 'imagination';
+const IMAGINATION_EMBEDDING_FIELD = 'imaginationEmbedding';
+const EMBED_RETRY_COUNT = parseInt(process.env.EMBED_REPOSITORY_RETRY_COUNT);
+const CHAT_RETRY_COUNT = parseInt(process.env.CHAT_REPOSITORY_RETRY_COUNT);
+
 const cosineSimilarity = (a, b) => a.map((e, i) => e * b[i]).reduce((x, y) => x + y);
 
 const retry = (fn, onError) => async (...args) => {
@@ -20,17 +32,21 @@ const retry = (fn, onError) => async (...args) => {
 };
 
 const embedWithRetry = retry(embedding.embed, (e, cnt) => {
-    log.log(`embeddings failed, retry count: ${cnt}`, {
+    log.log(`embed repository failed, retry count: ${cnt}`, {
         cnt, error: e.message || '', stack: e.stack || '',
     });
-    return cnt < 3;
+    return cnt < EMBED_RETRY_COUNT;
 });
 
 const chatWithRetry = retry(chat.chat, (e, cnt) => {
-    log.log(`chat completions failed, retry count: ${cnt}`, {
+    log.log(`chat repository failed, retry count: ${cnt}`, {
         cnt, error: e.message || '', stack: e.stack || '',
     });
-    return cnt < 3;
+    return cnt < CHAT_RETRY_COUNT;
 });
 
-export default {cosineSimilarity, retry, embedWithRetry, chatWithRetry};
+export default {
+    QUESTION_FIELD, QUESTION_EMBEDDING_FIELD, REPLY_FIELD, SUMMARY_FIELD, SUMMARY_EMBEDDING_FIELD,
+    INTROSPECTION_FIELD, INTROSPECTION_EMBEDDING_FIELD, IMAGINATION_FIELD, IMAGINATION_EMBEDDING_FIELD,
+    cosineSimilarity, embedWithRetry, chatWithRetry,
+};
