@@ -2,53 +2,79 @@ import memory from '../repository/memory.js';
 import common from './common.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
+import tokenizer from "../repository/tokenizer.js";
+
+const CONTEXT_COUNT = parseInt(process.env.IMAGINATION_CONTEXT_COUNT);
+const TOKEN_COUNT_LIMIT = parseInt(process.env.IMAGINATION_TOKEN_COUNT_LIMIT);
 
 const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (correlationId) => {
-    log.log('imagination parameters', {correlationId});
+    log.log('imagination service parameters', {correlationId});
     const refTime = new Date();
     log.log('imagination reference time', {correlationId, refTime});
     const imagineRes = await memory.imagine(correlationId, refTime, async (chatId) => {
-        log.log(`imagine for chat ID ${chatId}`, {correlationId, chatId});
+        log.log(`imagination: imagine for chat ID ${chatId}`, {correlationId, chatId});
         let referenceEmbedding;
-        const rawLongTermContext = await memory.longTermSearch(correlationId, chatId, (getConsolidations, consolidation) => {
+        const rawContext = await memory.longTermSearch(correlationId, chatId, (getConsolidations, consolidation) => {
             if (!referenceEmbedding) {
                 const cs = getConsolidations();
                 const c = cs[Math.floor(Math.random() * cs.length)];
-                const {summary, imagination} = c;
-                log.log(`selected reference imagination item for chat ID ${chatId}`,
+                const {
+                    [common.SUMMARY_FIELD]: summary,
+                    [common.IMAGINATION_FIELD]: imagination,
+                } = c;
+                log.log(`imagination: selected reference item for chat ID ${chatId}`,
                     {correlationId, chatId, summary, imagination});
-                referenceEmbedding = c.summaryEmbedding || c.imaginationEmbedding;
+                referenceEmbedding = c[common.SUMMARY_EMBEDDING_FIELD] || c[common.IMAGINATION_EMBEDDING_FIELD];
             }
-            const targetEmbedding = consolidation.summaryEmbedding || consolidation.imaginationEmbedding;
+            const targetEmbedding = consolidation[common.SUMMARY_EMBEDDING_FIELD] || consolidation[common.IMAGINATION_EMBEDDING_FIELD];
             return common.cosineSimilarity(referenceEmbedding, targetEmbedding);
-        }, 4);
-        if (!rawLongTermContext.length) {
-            log.log(`chat ID ${chatId} has no long-term memory, so we do not imagine`, {correlationId, chatId});
-            return {imagination: null};
+        }, CONTEXT_COUNT);
+        if (!rawContext.length) {
+            log.log(`imagination: chat ID ${chatId} has yet no long-term memory; do not perform imagination`,
+                {correlationId, chatId});
+            return {
+                imagination: null,
+            };
         }
-        const longTermContext = rawLongTermContext.map(
-            ([{summary, imagination},]) => !imagination ? summary : imagination);
-        log.log(`imagination context for chat ID ${chatId}`, {correlationId, chatId, longTermContext});
-        const messages = chatMessages(longTermContext);
-        log.log('imagination messages', {correlationId, chatId, messages});
-        const imagination = await common.chatWithRetry(correlationId, messages);
+        // NB: intentionally, summary and imagination cannot be distinguished
+        const context = rawContext.map(([{
+            [common.SUMMARY_FIELD]: summary,
+            [common.IMAGINATION_FIELD]: imagination,
+        },]) =>
+            !imagination ? summary : imagination);
+        log.log(`imagination context for chat ID ${chatId}`, {correlationId, chatId, context});
+        const prompt = chatPrompt(context);
+        log.log('imagination prompt', {correlationId, chatId, prompt});
+        const imagination = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT);
         const imaginationEmbedding = await common.embedWithRetry(correlationId, imagination);
-        const index = await memory.addImagination(correlationId, chatId, {
-            imagination,
-            imaginationEmbedding,
+        const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
+        const imaginationTokenCount = await tokenizer.countTokens(correlationId, imagination);
+        const {index, timestamp} = await memory.addImagination(correlationId, chatId, {
+            [common.IMAGINATION_FIELD]: imagination,
+            [common.IMAGINATION_EMBEDDING_FIELD]: imaginationEmbedding,
+        }, {
+            context,
+            prompt,
+            promptTokenCount,
+            imaginationTokenCount,
         });
-        return {index, imagination};
+        return {
+            index,
+            timestamp,
+            imagination,
+            context,
+            prompt,
+            promptTokenCount,
+            imaginationTokenCount,
+        };
     });
     return {
+        refTime,
         imagineRes,
     };
 });
 
-const chatMessages = (longTermContext) => [
-    {
-        role: 'system',
-        content: `You are GPT. This is an internal system.\nlong-term memory: ${JSON.stringify(longTermContext)}\nthoughts`,
-    },
-];
+const chatPrompt = (context) =>
+    `You are GPT. This is an internal system.\nlong-term memory: ${JSON.stringify(context)}\nthoughts`;
 
 export default {imagine};

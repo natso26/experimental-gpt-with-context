@@ -2,34 +2,66 @@ import memory from '../repository/memory.js';
 import common from './common.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
+import tokenizer from "../repository/tokenizer.js";
+
+const TOKEN_COUNT_LIMIT = parseInt(process.env.CONSOLIDATION_TOKEN_COUNT_LIMIT);
 
 const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate', async (correlationId, chatId) => {
-    log.log('consolidation parameters', {correlationId, chatId});
+    log.log('consolidation service parameters', {correlationId, chatId});
     const rawConsolidationRes = await memory.consolidate(correlationId, chatId, async (lvl, raw) => {
-        const input = lvl ? raw.map(({summary}) => summary)
-            : raw.map(({question, reply, introspection}) =>
-                !introspection ? {question, reply} : {introspection});
-        log.log('consolidation input', {correlationId, chatId, lvl, input});
-        const messages = chatMessages(input);
-        log.log('consolidation messages', {correlationId, chatId, messages});
-        const summary = await common.chatWithRetry(correlationId, messages);
+        // NB: it is better to flatten to summary instead of saying {summary}, but not with other cases
+        const context = lvl ? raw.map((
+                {
+                    [common.SUMMARY_FIELD]: summary,
+                }) => summary)
+            : raw.map((
+                {
+                    [common.QUESTION_FIELD]: question,
+                    [common.REPLY_FIELD]: reply,
+                    [common.INTROSPECTION_FIELD]: introspection,
+                }) => !introspection ? {question, reply} : {introspection});
+        log.log('consolidation context', {correlationId, chatId, lvl, context});
+        const prompt = chatPrompt(context);
+        log.log('consolidation prompt', {correlationId, chatId, prompt});
+        const summary = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT);
         const summaryEmbedding = await common.embedWithRetry(correlationId, summary);
-        return {summary, summaryEmbedding};
+        const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
+        const summaryTokenCount = await tokenizer.countTokens(correlationId, summary);
+        return {
+            consolidation: {
+                [common.SUMMARY_FIELD]: summary,
+                [common.SUMMARY_EMBEDDING_FIELD]: summaryEmbedding,
+            },
+            extra: {
+                context,
+                prompt,
+                promptTokenCount,
+                summaryTokenCount,
+            },
+        };
     });
-    const consolidationRes = rawConsolidationRes.map(({lvl, index, consolidation}) => {
-        const {summary} = consolidation;
-        return {lvl, index, summary};
+    const consolidationRes = rawConsolidationRes.map(({lvl, index, timestamp, consolidation, extra}) => {
+        const {
+            [common.SUMMARY_FIELD]: summary,
+        } = consolidation;
+        const {context, prompt, promptTokenCount, summaryTokenCount} = extra;
+        return {
+            lvl,
+            index,
+            timestamp,
+            summary,
+            context,
+            prompt,
+            promptTokenCount,
+            summaryTokenCount,
+        };
     });
     return {
         consolidationRes,
     };
 });
 
-const chatMessages = (input) => [
-    {
-        role: 'system',
-        content: `You are GPT. This is an internal system.\n${JSON.stringify(input)}\nsummarize`,
-    },
-];
+const chatPrompt = (context) =>
+    `You are GPT. This is an internal system.\n${JSON.stringify(context)}\nsummarize`;
 
 export default {consolidate};

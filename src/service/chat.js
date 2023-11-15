@@ -1,73 +1,92 @@
 import tokenizer from '../repository/tokenizer.js';
 import memory from '../repository/memory.js';
 import common from './common.js';
+import fetch_ from '../util/fetch.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
-const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId, chatId, message) => {
-    log.log('chat parameters', {correlationId, chatId, question: message});
-    const messageTokenCount = await tokenizer.countTokens(correlationId, message);
-    log.log('message token count', {correlationId, chatId, messageTokenCount});
-    if (messageTokenCount > 256) {
-        throw new Error(`message exceeds maximum length of 256 tokens: ${messageTokenCount} tokens`);
+const QUESTION_TOKEN_COUNT_LIMIT = parseInt(process.env.CHAT_QUESTION_TOKEN_COUNT_LIMIT);
+const SHORT_TERM_CONTEXT_COUNT = parseInt(process.env.CHAT_SHORT_TERM_CONTEXT_COUNT);
+const LONG_TERM_CONTEXT_COUNT = parseInt(process.env.CHAT_LONG_TERM_CONTEXT_COUNT);
+const REPLY_TOKEN_COUNT_LIMIT = parseInt(process.env.CHAT_REPLY_TOKEN_COUNT_LIMIT);
+const MIN_SCHEDULED_IMAGINATION_DELAY = parseInt(process.env.CHAT_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
+const MAX_SCHEDULED_IMAGINATION_DELAY = parseInt(process.env.CHAT_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
+
+const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId, chatId, question) => {
+    log.log('chat service parameters', {correlationId, chatId, question});
+    const questionTokenCount = await tokenizer.countTokens(correlationId, question);
+    log.log('chat question token count', {correlationId, chatId, questionTokenCount});
+    if (questionTokenCount > QUESTION_TOKEN_COUNT_LIMIT) {
+        throw new Error(`chat question token count exceeds limit of ${QUESTION_TOKEN_COUNT_LIMIT}: ${questionTokenCount}`);
     }
-    const questionEmbedding = await common.embedWithRetry(correlationId, message);
+    const questionEmbedding = await common.embedWithRetry(correlationId, question);
     const refTime = new Date();
     const rawShortTermContext = await memory.shortTermSearch(correlationId, chatId, (elt, i, timestamp) => {
         const discount = recencyDiscount(i, refTime - timestamp);
         if (discount === null) {
             return 99 - i;
         }
-        const targetEmbedding = elt.questionEmbedding || elt.introspectionEmbedding;
+        const targetEmbedding = elt[common.QUESTION_EMBEDDING_FIELD] || elt[common.INTROSPECTION_EMBEDDING_FIELD];
         return 10 * common.cosineSimilarity(questionEmbedding, targetEmbedding) * discount;
-    }, 7);
-    const shortTermContext = rawShortTermContext.reverse().map(
-        ([{question, reply, introspection}, relevance]) =>
-            !introspection ? {relevance, question, reply} : {relevance, introspection});
-    log.log('searched short-term context', {correlationId, chatId, shortTermContext});
+    }, SHORT_TERM_CONTEXT_COUNT);
+    const shortTermContext = rawShortTermContext.map(([{
+        [common.QUESTION_FIELD]: question,
+        [common.REPLY_FIELD]: reply,
+        [common.INTROSPECTION_FIELD]: introspection,
+    }, rawRelevance]) => {
+        const relevance = parseFloat(rawRelevance.toFixed(3));
+        return !introspection ? {relevance, question, reply} : {relevance, introspection};
+    }).reverse();
+    log.log('chat short-term context', {correlationId, chatId, shortTermContext});
     const rawLongTermContext = await memory.longTermSearch(correlationId, chatId, (_, consolidation) => {
-        const targetEmbedding = consolidation.summaryEmbedding || consolidation.imaginationEmbedding;
+        const targetEmbedding = consolidation[common.SUMMARY_EMBEDDING_FIELD] || consolidation[common.IMAGINATION_EMBEDDING_FIELD];
         return common.cosineSimilarity(questionEmbedding, targetEmbedding);
-    }, 2);
-    const longTermContext = rawLongTermContext.reverse().map(
-        ([{summary, imagination},]) =>
-            !imagination ? {summary} : {imagination});
-    log.log('searched long-term context', {correlationId, chatId, longTermContext});
-    const messages = chatMessages(shortTermContext, longTermContext, message);
-    log.log('chat messages', {correlationId, chatId, messages});
-    const reply = await common.chatWithRetry(correlationId, messages);
-    log.log('chat reply', {correlationId, chatId, reply});
+    }, LONG_TERM_CONTEXT_COUNT);
+    const longTermContext = rawLongTermContext.map(([{
+        [common.SUMMARY_FIELD]: summary,
+        [common.IMAGINATION_FIELD]: imagination,
+    },]) =>
+        !imagination ? {summary} : {imagination}).reverse();
+    log.log('chat long-term context', {correlationId, chatId, longTermContext});
+    const prompt = chatPrompt(shortTermContext, longTermContext, question);
+    log.log('chat prompt', {correlationId, chatId, prompt});
+    const reply = await common.chatWithRetry(correlationId, prompt, REPLY_TOKEN_COUNT_LIMIT);
+    const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
     const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
-    log.log('reply token count', {correlationId, chatId, replyTokenCount});
-    const index = await memory.add(correlationId, chatId, {
-        question: message,
-        questionTokenCount: messageTokenCount,
-        questionEmbedding,
-        reply,
+    const {index, timestamp} = await memory.add(correlationId, chatId, {
+        [common.QUESTION_FIELD]: question,
+        [common.QUESTION_EMBEDDING_FIELD]: questionEmbedding,
+        [common.REPLY_FIELD]: reply,
+    }, {
+        questionTokenCount,
+        shortTermContext,
+        longTermContext,
+        prompt,
+        promptTokenCount,
         replyTokenCount,
     }, false);
     // in background
-    fetch(`${process.env.BACKGROUND_TASK_HOST}/api/consolidate`, {
+    fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/consolidate`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Correlation-Id': correlationId,
         },
         body: JSON.stringify({chatId}),
-    }).catch((e) =>
-        log.log('fetch consolidate failed, may have timed out', {
+    }, 60 * 1000).catch((e) =>
+        log.log('chat: fetch /api/consolidate failed, likely timed out', {
             correlationId, chatId, error: e.message || '', stack: e.stack || '',
         }));
     // in background
-    fetch(`${process.env.BACKGROUND_TASK_HOST}/api/introspect`, {
+    fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/introspect`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Correlation-Id': correlationId,
         },
         body: JSON.stringify({chatId, index}),
-    }).catch((e) =>
-        log.log('fetch introspect failed, may have timed out', {
+    }, 60 * 1000).catch((e) =>
+        log.log('chat: fetch /api/introspect failed, likely timed out', {
             correlationId, chatId, error: e.message || '', stack: e.stack || '',
         }));
     const scheduledImagination = await memory.scheduleImagination(correlationId, chatId, (curr) => {
@@ -75,21 +94,26 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             return curr;
         }
         const scheduledImagination = new Date(
-            new Date().getTime() + 6 * 3600 * 1000 + Math.random() * 6 * 3600 * 1000);
-        log.log('scheduled imagination', {correlationId, chatId, scheduledImagination});
+            new Date().getTime() + MIN_SCHEDULED_IMAGINATION_DELAY
+            + Math.random() * (MAX_SCHEDULED_IMAGINATION_DELAY - MIN_SCHEDULED_IMAGINATION_DELAY));
+        log.log('chat scheduled imagination', {correlationId, chatId, scheduledImagination});
         return scheduledImagination;
     }).catch((e) => {
-        log.log('schedule imagination failed, continue since it is low-priority task', {
+        log.log('chat: schedule imagination failed; continue since it is of low priority', {
             correlationId, chatId, error: e.message || '', stack: e.stack || '',
         });
         return null;
     });
     return {
         index,
+        timestamp,
         reply,
-        replyTokenCount,
+        questionTokenCount,
         shortTermContext,
         longTermContext,
+        prompt,
+        promptTokenCount,
+        replyTokenCount,
         scheduledImagination,
     };
 });
@@ -113,11 +137,7 @@ const recencyDiscount = (i, ms) => {
     return (i + 1.2 + 1.10 * timePenalty) ** -.43;
 };
 
-const chatMessages = (shortTermContext, longTermContext, message) => [
-    {
-        role: 'system',
-        content: `You are GPT. This is an external system.\nlong-term memory: ${JSON.stringify(longTermContext)}\nshort-term memory: ${JSON.stringify(shortTermContext)}\nuser: ${JSON.stringify(message)}`,
-    },
-];
+const chatPrompt = (shortTermContext, longTermContext, question) =>
+    `You are GPT. This is an external system.\nlong-term memory: ${JSON.stringify(longTermContext)}\nshort-term memory: ${JSON.stringify(shortTermContext)}\nuser: ${JSON.stringify(question)}`;
 
 export default {chat};

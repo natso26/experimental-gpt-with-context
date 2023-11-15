@@ -2,94 +2,122 @@ import firestore from '@google-cloud/firestore';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
-const db = new firestore.Firestore();
-const coll = db.collection('memory');
+const TOP_LEVEL_COLLECTION = 'memory';
+const SCHEDULED_IMAGINATION_FIELD = 'scheduledImagination';
+const ELT_COLLECTION = 'elts';
+const CONSOLIDATION_COLLECTION = (lvl) => `${lvl}-consolidations`;
+const IMAGINATION_COLLECTION = 'imaginations';
+const INDEX_FIELD = 'index';
+const TIMESTAMP_FIELD = 'timestamp';
+const IS_INTERNAL_FIELD = 'isInternal';
+const ELT_FIELD = 'elt';
+const CONSOLIDATION_FIELD = 'consolidation';
+const EXTRA_FIELD = 'extra';
+const SHORT_TERM_SEARCH_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_SHORT_TERM_SEARCH_LOOKBACK_LIMIT);
+const LONG_TERM_SEARCH_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_LONG_TERM_SEARCH_LOOKBACK_LIMIT);
+const MAX_CONSOLIDATION_LVL = parseInt(process.env.MEMORY_MAX_CONSOLIDATION_LVL);
 
-const add = wrapper.logCorrelationId('repository.memory.add', async (correlationId, chatId, elt, isInternal) => {
-    const eltsColl = coll.doc(chatId).collection('elts');
+const db = new firestore.Firestore();
+const coll = db.collection(TOP_LEVEL_COLLECTION);
+
+const add = wrapper.logCorrelationId('repository.memory.add', async (correlationId, chatId, elt, extra, isInternal) => {
+    const eltsColl = coll.doc(chatId).collection(ELT_COLLECTION);
     const timestamp = new Date();
     return await db.runTransaction(async (txn) => {
-        const snapshot = await txn.get(eltsColl.orderBy('index', 'desc').limit(1));
-        const index = snapshot.empty ? 0 : snapshot.docs[0].data().index + 1;
+        const snapshot = await txn.get(
+            eltsColl.select(INDEX_FIELD).orderBy(INDEX_FIELD, 'desc').limit(1));
+        const index = snapshot.empty ? 0 : snapshot.docs[0].data()[INDEX_FIELD] + 1;
         await txn.set(eltsColl.doc(), {
-            index,
-            timestamp,
-            isInternal,
-            elt,
+            [INDEX_FIELD]: index,
+            [TIMESTAMP_FIELD]: timestamp,
+            [IS_INTERNAL_FIELD]: isInternal,
+            [ELT_FIELD]: elt,
+            [EXTRA_FIELD]: extra,
         });
-        return index;
+        return {index, timestamp};
     });
 });
 
-const addImagination = wrapper.logCorrelationId('repository.memory.addImagination', async (correlationId, chatId, consolidation) => {
-    const imaginationsColl = coll.doc(chatId).collection('imaginations');
+const addImagination = wrapper.logCorrelationId('repository.memory.addImagination', async (correlationId, chatId, consolidation, extra) => {
+    const imaginationsColl = coll.doc(chatId).collection(IMAGINATION_COLLECTION);
     const timestamp = new Date();
     return await db.runTransaction(async (txn) => {
-        const snapshot = await txn.get(imaginationsColl.orderBy('index', 'desc').limit(1));
-        const index = snapshot.empty ? 0 : snapshot.docs[0].data().index + 1;
+        const snapshot = await txn.get(
+            imaginationsColl.select(INDEX_FIELD).orderBy(INDEX_FIELD, 'desc').limit(1));
+        const index = snapshot.empty ? 0 : snapshot.docs[0].data()[INDEX_FIELD] + 1;
         await txn.set(imaginationsColl.doc(), {
-            index,
-            timestamp,
-            consolidation,
+            [INDEX_FIELD]: index,
+            [TIMESTAMP_FIELD]: timestamp,
+            [CONSOLIDATION_FIELD]: consolidation,
+            [EXTRA_FIELD]: extra,
         });
-        return index;
+        return {index, timestamp};
     });
 });
 
 const getLatest = wrapper.logCorrelationId('repository.memory.getLatest', async (correlationId, chatId, numResults) => {
-    const snapshot = await coll.doc(chatId).collection('elts')
-        .orderBy('index', 'desc').limit(numResults).get();
+    const snapshot = await coll.doc(chatId).collection(ELT_COLLECTION)
+        .select(INDEX_FIELD, ELT_FIELD).orderBy(INDEX_FIELD, 'desc').limit(numResults).get();
     const data = snapshot.docs.map(doc => doc.data());
-    return [data.map(({elt}) => elt).reverse(), data.empty ? -1 : data[0].index];
+    const elts = data.map(({[ELT_FIELD]: elt}) => elt).reverse();
+    const latestIndex = data.empty ? -1 : data[0][INDEX_FIELD];
+    return {elts, latestIndex};
 });
 
 const getHistory = wrapper.logCorrelationId('repository.memory.getHistory', async (correlationId, chatId, offset, limit) => {
-    const snapshot = await coll.doc(chatId).collection('elts')
-        .where('isInternal', '!=', true).orderBy('isInternal')
-        .orderBy('index', 'desc').offset(offset).limit(limit).get();
+    const snapshot = await coll.doc(chatId).collection(ELT_COLLECTION)
+        .select(INDEX_FIELD, IS_INTERNAL_FIELD, ELT_FIELD)
+        .where(IS_INTERNAL_FIELD, '!=', true).orderBy(IS_INTERNAL_FIELD)
+        .orderBy(INDEX_FIELD, 'desc').offset(offset).limit(limit).get();
     const data = snapshot.docs.map(doc => doc.data());
-    return data.map(({elt}) => elt).reverse();
+    return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
 });
 
 const shortTermSearch = wrapper.logCorrelationId('repository.memory.shortTermSearch', async (correlationId, chatId, maximizingObjective, numResults) => {
-    const snapshot = await coll.doc(chatId).collection('elts')
-        .orderBy('index', 'desc').limit(1000).get();
+    const snapshot = await coll.doc(chatId).collection(ELT_COLLECTION)
+        .select(INDEX_FIELD, TIMESTAMP_FIELD, ELT_FIELD).orderBy(INDEX_FIELD, 'desc').limit(SHORT_TERM_SEARCH_LOOKBACK_LIMIT).get();
     const data = snapshot.docs.map(doc => doc.data());
-    return data.map(({timestamp, elt}, i) => [elt, maximizingObjective(elt, i, timestamp.toDate())])
+    return data.map(({[TIMESTAMP_FIELD]: timestamp, [ELT_FIELD]: elt}, i) =>
+        [elt, maximizingObjective(elt, i, timestamp.toDate())])
         .sort((a, b) => b[1] - a[1])
         .slice(0, numResults);
 });
 
 const longTermSearch = wrapper.logCorrelationId('repository.memory.longTermSearch', async (correlationId, chatId, maximizingObjective, numResults) => {
     const data = [];
-    for (let lvl = 0; lvl <= 9; lvl++) {
-        const snapshot = await coll.doc(chatId).collection(
-            lvl < 9 ? `${lvl}-consolidations` : 'imaginations')
-            .orderBy('index', 'desc').limit(63).get();
+    for (let lvl = 0; lvl <= MAX_CONSOLIDATION_LVL + 1; lvl++) {
+        const snapshot = await coll.doc(chatId)
+            .collection(lvl <= MAX_CONSOLIDATION_LVL ? CONSOLIDATION_COLLECTION(lvl) : IMAGINATION_COLLECTION)
+            .select(INDEX_FIELD, CONSOLIDATION_FIELD).orderBy(INDEX_FIELD, 'desc').limit(LONG_TERM_SEARCH_LOOKBACK_LIMIT).get();
         if (snapshot.empty) {
             continue;
         }
         const rawLvlData = snapshot.docs.map(doc => doc.data());
-        const lvlData = rawLvlData.filter(({index}) => index > rawLvlData[rawLvlData.length - 1].index - 63);
+        const lvlData = rawLvlData.filter(({[INDEX_FIELD]: index}) =>
+            index > rawLvlData[rawLvlData.length - 1][INDEX_FIELD] - LONG_TERM_SEARCH_LOOKBACK_LIMIT);
         data.push(...lvlData);
     }
-    const getConsolidations = () => data.map(({consolidation}) => consolidation);
-    return data.map(({consolidation}) => [consolidation, maximizingObjective(getConsolidations, consolidation)])
+    const getConsolidations = () => data.map(({[CONSOLIDATION_FIELD]: consolidation}) => consolidation);
+    return data.map(({[CONSOLIDATION_FIELD]: consolidation}) =>
+        [consolidation, maximizingObjective(getConsolidations, consolidation)])
         .sort((a, b) => b[1] - a[1])
         .slice(0, numResults);
 });
 
 const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', async (correlationId, chatId, consolidationFn) => {
     const ret = [];
-    for (let lvl = 0; lvl <= 8; lvl++) {
-        const prevLvlColl = lvl ? await coll.doc(chatId).collection(`${lvl - 1}-consolidations`)
-            : coll.doc(chatId).collection('elts');
-        const lvlColl = coll.doc(chatId).collection(`${lvl}-consolidations`);
+    for (let lvl = 0; lvl <= MAX_CONSOLIDATION_LVL; lvl++) {
+        const prevLvlColl = lvl ? await coll.doc(chatId).collection(CONSOLIDATION_COLLECTION(lvl - 1))
+            : coll.doc(chatId).collection(ELT_COLLECTION);
+        const lvlColl = coll.doc(chatId).collection(CONSOLIDATION_COLLECTION(lvl));
         const txnRes = await db.runTransaction(async (txn) => {
-            const s = await txn.get(prevLvlColl.orderBy('index', 'desc').limit(1));
-            const latestPrevLvlIndex = s.empty ? -1 : s.docs[0].data().index;
-            const s2 = await txn.get(lvlColl.orderBy('index', 'desc').limit(1));
-            const latestLvlIndex = s2.empty ? -1 : s2.docs[0].data().index;
+            const s = await txn.get(
+                prevLvlColl.select(INDEX_FIELD).orderBy(INDEX_FIELD, 'desc').limit(1));
+            const latestPrevLvlIndex = s.empty ? -1 : s.docs[0].data()[INDEX_FIELD];
+            const s2 = await txn.get(
+                lvlColl.select(INDEX_FIELD).orderBy(INDEX_FIELD, 'desc').limit(1));
+            const latestLvlIndex = s2.empty ? -1 : s2.docs[0].data()[INDEX_FIELD];
+            // NB: the size and interleaving logic is hard coded rather than configurable
             const targetLvlIndex = lvl ? Math.floor((latestPrevLvlIndex - 3) / 4)
                 : Math.floor((latestPrevLvlIndex - 7) / 4);
             if (targetLvlIndex < 0) {
@@ -98,20 +126,23 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
             if (targetLvlIndex <= latestLvlIndex) {
                 return;
             }
-            const prevLvlSnapshot = await txn.get(prevLvlColl.orderBy('index', 'desc')
-                .offset((latestPrevLvlIndex + 1) % 4)
-                .limit(4 * (targetLvlIndex - latestLvlIndex + !lvl)));
+            const prevLvlSnapshot = await txn.get(
+                prevLvlColl.select(INDEX_FIELD, lvl ? CONSOLIDATION_FIELD : ELT_FIELD)
+                    .orderBy(INDEX_FIELD, 'desc').offset((latestPrevLvlIndex + 1) % 4).limit(4 * (targetLvlIndex - latestLvlIndex + !lvl)));
             const prevLvlData = prevLvlSnapshot.docs
                 .map(doc => doc.data()).reverse();
             for (let i = latestLvlIndex + 1; i <= targetLvlIndex; i++) {
                 const raw = prevLvlData.slice(4 * (i - latestLvlIndex - 1), 4 * (i - latestLvlIndex + !lvl));
-                const consolidation = await consolidationFn(lvl,
-                    lvl ? raw.map(({consolidation}) => consolidation) : raw.map(({elt}) => elt));
+                const {consolidation, extra} = await consolidationFn(lvl,
+                    lvl ? raw.map(({[CONSOLIDATION_FIELD]: consolidation}) => consolidation) : raw.map(({[ELT_FIELD]: elt}) => elt));
+                const timestamp = new Date();
                 await txn.set(lvlColl.doc(), {
-                    index: i,
-                    consolidation,
+                    [INDEX_FIELD]: i,
+                    [TIMESTAMP_FIELD]: timestamp,
+                    [CONSOLIDATION_FIELD]: consolidation,
+                    [EXTRA_FIELD]: extra,
                 });
-                ret.push({lvl, index: i, consolidation});
+                ret.push({lvl, index: i, timestamp, consolidation, extra});
             }
         });
         if (txnRes === 'final-level') {
@@ -125,33 +156,35 @@ const scheduleImagination = wrapper.logCorrelationId('repository.memory.schedule
     return await db.runTransaction(async (txn) => {
         const doc = coll.doc(chatId);
         const s = await txn.get(doc);
-        const curr = s.data()?.scheduledImagination?.toDate() || null;
+        const curr = s.data()?.[SCHEDULED_IMAGINATION_FIELD]?.toDate() || null;
         const scheduledImagination = getNext(curr);
         if (scheduledImagination !== curr) {
-            await txn.set(doc,
-                {scheduledImagination: scheduledImagination || firestore.FieldValue.delete()}, {merge: true});
+            await txn.set(
+                doc, {[SCHEDULED_IMAGINATION_FIELD]: scheduledImagination || firestore.FieldValue.delete()}, {merge: true});
         }
         return scheduledImagination;
     });
 });
 
 const imagine = wrapper.logCorrelationId('repository.memory.imagine', async (correlationId, refTime, imaginationFn) => {
-    const s = await coll.where('scheduledImagination', '<=', firestore.Timestamp.fromDate(refTime))
-        .orderBy('scheduledImagination').get();
+    const s = await coll
+        .select(SCHEDULED_IMAGINATION_FIELD).where(SCHEDULED_IMAGINATION_FIELD, '<=', firestore.Timestamp.fromDate(refTime))
+        .orderBy(SCHEDULED_IMAGINATION_FIELD).get();
     const chatIds = s.docs.map(doc => doc.id);
     log.log(`imagine for chat IDs: ${chatIds}`, {correlationId, chatIds});
     const ret = {};
     for (const chatId of chatIds) {
         const out = await db.runTransaction(async (txn) => {
             const doc = coll.doc(chatId);
-            const scheduledImagination = (await txn.get(doc)).data()?.scheduledImagination?.toDate();
+            const scheduledImagination =
+                (await txn.get(doc)).data()?.[SCHEDULED_IMAGINATION_FIELD]?.toDate();
             if (!(scheduledImagination && scheduledImagination <= refTime)) {
                 log.log(`chat ID ${chatId} scheduled imagination has already changed and so will be skipped`,
                     {correlationId, chatId, scheduledImagination, refTime});
                 return;
             }
             const out = await imaginationFn(chatId);
-            await txn.set(doc, {scheduledImagination: firestore.FieldValue.delete()}, {merge: true});
+            await txn.set(doc, {[SCHEDULED_IMAGINATION_FIELD]: firestore.FieldValue.delete()}, {merge: true});
             return out;
         });
         ret[chatId] = out;
