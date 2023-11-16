@@ -1,86 +1,52 @@
-experimental-gpt-with-context
-=============================
+Experimental GPT
+================
 
-Bring GPT-4 close to an "artificially conscious agent,"
-while improving conversational abilities along the way.
-
-
-Features
---------
-
-``(question, reply)`` pairs of lengths <= ``(256, 512)`` tokens,
-+ internal items.
-
-Relevance computation using OpenAI embedding ``text-embedding-ada-002``
-via vector search.
-
-- **Short-term memory**. 7 slots of either ``(question, reply)``
-  or ``introspection``, ranked by relevance and recency
-  (index position and timestamp).
-
-- **Long-term memory**. 2 slots of either ``summary`` or ``imagination``,
-  ranked by relevance only.
-
-  - Auto-consolidate ``(question, reply)`` as ``summary`` (8 at a time,
-    interleaving at every 4).
-
-  - Hierarchically auto-consolidate ``summary`` as higher-level ``summary``
-    (4 at a time, up to 8 extra levels).
-
-  - Cut off at 63 most recent ``summary`` in each level.
-
-- **Introspection**. 3 to 15 minutes, exponentially sampled, after an interaction,
-  an ``introspection`` of 6 most recent ``(question, reply)`` occurs,
-  unless a newer ``(question, reply)`` has been added.
-
-  - It goes into the short-term memory.
-
-- **Imagination**. Weirdly named, at a scheduled time occurring between roughly
-  6 and 12 hours in the future, a ``summary`` or ``imagination`` is randomly selected,
-  3 more closest items from the long-term memory are taken, and an ``imagination``
-  is generated from these 4 items.
-
-  - After an imagination occurs, the schedule is cleared, and the next interaction
-    will schedule a new imagination.
-
-  - It goes into its own level in the long-term memory, and is cut off
-    and searched along with ``summary``.
+Towards artificial consciousness.
 
 
-Diagram
--------
+Persistence
+-----------
+
+Externally, a sequence of ``(query, reply)`` pairs. Internally:
 
 .. code-block:: none
 
-                       /---
-                      v   |
-   Short-term memory: (question, reply) <-> introspection
-                      ^          ^         /
-                      |      /---+---------
-                      v     v    |
-   Long-term memory:  summary -> imagination
-                      ^   |      ^   |
-                       \---       \---
+    /---
+   v   |
+   (query, reply) <-> introspection
+   ^          ^      /
+   |      /---+------
+   v     v    |
+   summary -> imagination
+   ^   |      ^   |
+    \---       \---
 
 
-Infrastructure
---------------
+Mechanism
+---------
 
-- We deploy on GCP Cloud Run + Firestore. Provide your own ``OPENAI_API_KEY``
-  and other necessary environment variables.
+1. Context. Short-term context of ``(query, reply)`` and ``introspection``,
+   scored by recency and cosine similarity of embeddings.
+   Long-term context of ``summary`` and ``imagination``,
+   scored by cosine similarity of embeddings.
 
-- Summarization and introspection are launched as "background" HTTP requests
-  to the same Cloud Run URL rather than Node.js async tasks, to keep
-  Cloud Run awake.
+2. Consolidation. Summarize ``(query, reply)`` as ``summary``;
+   summarize ``summary`` as higher-order ``summary``.
 
-- Imagination is launched by polling from Cloud Scheduler every 15 minutes.
+3. Introspection. Thoughts on ``(query, reply)``
+   some amount of time after the user's idleness.
 
-- Frontend consists of 2 "static" HTML pages: ``/`` for chat
-  and ``/history`` for history. We have minimal but effective reactivity
-  via vanilla JS.
+4. Imagination. Thoughts on random selection of related ``summary`` and ``imagination``,
+   scheduled in advance after user interaction.
+
+5. Subroutine. Can recursively query to itself;
+   subroutine results are not used in future interactions.
 
 
-Does it work?
--------------
+Engineering
+-----------
 
-Yes.
+- Google Cloud Run, Firestore.
+- Consolidation, Introspection by separate HTTP requests to keep Cloud Run awake.
+- Imagination by Cloud Scheduler polling.
+- Frontend of chat and history pages; static HTML, vanilla JS.
