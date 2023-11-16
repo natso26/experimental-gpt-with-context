@@ -10,4 +10,6 @@ const history = wrapper.logCorrelationId('handler.history.history', async (corre
     return await history_.getHistory(correlationId, chatId, offset, limit);
 });
 
-export default {history};
+export default {
+    history,
+};

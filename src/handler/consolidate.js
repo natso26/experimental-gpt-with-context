@@ -9,4 +9,6 @@ const consolidate = wrapper.logCorrelationId('handler.consolidate.consolidate', 
     return await consolidation.consolidate(correlationId, chatId);
 });
 
-export default {consolidate};
+export default {
+    consolidate,
+};

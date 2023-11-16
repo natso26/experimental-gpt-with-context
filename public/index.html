@@ -50,9 +50,9 @@
     <textarea class="text-box" id="chat-id" rows="1"></textarea>
 </div>
 <br>
-<label for="question">Question</label>
+<label for="query">Query</label>
 <div>
-    <textarea class="text-box" id="question" rows="3"></textarea>
+    <textarea class="text-box" id="query" rows="4"></textarea>
 </div>
 <div class="buttons-panel">
     <button class="button" id="submit">Submit</button>
@@ -61,22 +61,20 @@
 <br>
 <label for="reply">Reply</label>
 <div>
-    <textarea class="text-box" disabled id="reply" rows="12"></textarea>
+    <textarea class="text-box" disabled id="reply" rows="16"></textarea>
 </div>
 
 <script>
     const chatIdBox = document.getElementById('chat-id');
-    const questionBox = document.getElementById('question');
+    const queryBox = document.getElementById('query');
     const submitButton = document.getElementById('submit');
     const historyButton = document.getElementById('history');
     const replyBox = document.getElementById('reply');
-    const uuidv4 = () => {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    };
+    const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
     const updateUrl = () => {
         const chatId = chatIdBox.value.trim();
         const url = new URL(window.location.href);
@@ -88,9 +86,9 @@
     chatIdBox.addEventListener('change', updateUrl);
     submitButton.addEventListener('click', async () => {
         const chatId = chatIdBox.value.trim();
-        const question = questionBox.value;
+        const query = queryBox.value;
         chatIdBox.disabled = true;
-        questionBox.disabled = true;
+        queryBox.disabled = true;
         submitButton.disabled = true;
         try {
             const resp = await fetch('/api/chat', {
@@ -98,7 +96,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({chatId, question}),
+                body: JSON.stringify({chatId, query}),
             });
             if (!resp.ok) {
                 const error = await resp.json();
@@ -110,10 +108,10 @@
                 replyBox.innerHTML = data.reply;
             }
         } catch (e) {
-            replyBox.innerHTML = e.message || 'There was an error fetching a response.';
+            replyBox.innerHTML = e.message || 'There was an error fetching the response.';
         }
         chatIdBox.disabled = false;
-        questionBox.disabled = false;
+        queryBox.disabled = false;
         submitButton.disabled = false;
     });
     historyButton.addEventListener('click', () => {

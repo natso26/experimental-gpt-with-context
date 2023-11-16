@@ -136,13 +136,13 @@
                 const data = await resp.json();
                 console.log({data});
                 let history = '';
-                for (const [i, {question, reply}] of data.history.reverse().entries()) {
-                    history += `=== Question ${offset + i} ===\n\n${question}\n\n=== Reply ${offset + i} ===\n\n${reply}\n\n\n`;
+                for (const [i, {query, reply}] of data.history.reverse().entries()) {
+                    history += `=== Query ${offset + i} ===\n\n${query}\n\n=== Reply ${offset + i} ===\n\n${reply}\n\n\n`;
                 }
                 historyBox.innerHTML = history;
             }
         } catch (e) {
-            historyBox.innerHTML = e.message || 'There was an error fetching a response.';
+            historyBox.innerHTML = e.message || 'There was an error fetching the response.';
         }
         chatIdBox.disabled = false;
         offsetInput.disabled = false;

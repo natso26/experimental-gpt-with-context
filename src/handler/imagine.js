@@ -5,4 +5,6 @@ const imagine = wrapper.logCorrelationId('handler.imagine.imagine', async (corre
     return await imagination.imagine(correlationId);
 });
 
-export default {imagine};
+export default {
+    imagine,
+};

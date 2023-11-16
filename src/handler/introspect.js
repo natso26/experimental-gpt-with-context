@@ -9,4 +9,6 @@ const introspect = wrapper.logCorrelationId('handler.introspect.introspect', asy
     return await introspection.introspect(correlationId, chatId, index);
 });
 
-export default {introspect};
+export default {
+    introspect,
+};

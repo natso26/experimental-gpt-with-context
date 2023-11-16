@@ -2,8 +2,8 @@ import embedding from '../repository/embedding.js';
 import chat from '../repository/chat.js';
 import log from '../util/log.js';
 
-const QUESTION_FIELD = 'question';
-const QUESTION_EMBEDDING_FIELD = 'questionEmbedding';
+const QUERY_FIELD = 'query';
+const QUERY_EMBEDDING_FIELD = 'queryEmbedding';
 const REPLY_FIELD = 'reply';
 const SUMMARY_FIELD = 'summary';
 const SUMMARY_EMBEDDING_FIELD = 'summaryEmbedding';
@@ -46,7 +46,16 @@ const chatWithRetry = retry(chat.chat, (e, cnt) => {
 });
 
 export default {
-    QUESTION_FIELD, QUESTION_EMBEDDING_FIELD, REPLY_FIELD, SUMMARY_FIELD, SUMMARY_EMBEDDING_FIELD,
-    INTROSPECTION_FIELD, INTROSPECTION_EMBEDDING_FIELD, IMAGINATION_FIELD, IMAGINATION_EMBEDDING_FIELD,
-    cosineSimilarity, embedWithRetry, chatWithRetry,
+    QUERY_FIELD,
+    QUERY_EMBEDDING_FIELD,
+    REPLY_FIELD,
+    SUMMARY_FIELD,
+    SUMMARY_EMBEDDING_FIELD,
+    INTROSPECTION_FIELD,
+    INTROSPECTION_EMBEDDING_FIELD,
+    IMAGINATION_FIELD,
+    IMAGINATION_EMBEDDING_FIELD,
+    cosineSimilarity,
+    embedWithRetry,
+    chatWithRetry,
 };

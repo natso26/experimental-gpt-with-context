@@ -24,7 +24,9 @@ const embed = wrapper.logCorrelationId('repository.embedding.embed', async (corr
     const {embedding} = data.data[0];
     return {
         embedding,
-    }
+    };
 });
 
-export default {embed};
+export default {
+    embed,
+};

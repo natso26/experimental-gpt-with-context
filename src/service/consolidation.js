@@ -4,56 +4,78 @@ import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 import tokenizer from "../repository/tokenizer.js";
 
+const MODEL_PROMPT_QUERY_FIELD = 'query';
+const MODEL_PROMPT_REPLY_FIELD = 'reply';
+const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
+const MODEL_PROMPT = (context) =>
+    `You are GPT. This is an internal system.\n`
+    + `${JSON.stringify(context)}\n`
+    + `summarize`;
 const TOKEN_COUNT_LIMIT = parseInt(process.env.CONSOLIDATION_TOKEN_COUNT_LIMIT);
 
 const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate', async (correlationId, chatId) => {
     log.log('consolidation service parameters', {correlationId, chatId});
     const rawConsolidationRes = await memory.consolidate(correlationId, chatId, async (lvl, raw) => {
-        // NB: it is better to flatten to summary instead of saying {summary}, but not with other cases
+        const startTime = new Date();
+        // NB: it is better to flatten summary, but not with other cases
         const context = lvl ? raw.map((
                 {
                     [common.SUMMARY_FIELD]: summary,
                 }) => summary)
             : raw.map((
                 {
-                    [common.QUESTION_FIELD]: question,
+                    [common.QUERY_FIELD]: query,
                     [common.REPLY_FIELD]: reply,
                     [common.INTROSPECTION_FIELD]: introspection,
-                }) => !introspection ? {question, reply} : {introspection});
+                }) => !introspection ? {
+                [MODEL_PROMPT_QUERY_FIELD]: query,
+                [MODEL_PROMPT_REPLY_FIELD]: reply,
+            } : {
+                [MODEL_PROMPT_INTROSPECTION_FIELD]: introspection,
+            });
         log.log('consolidation context', {correlationId, chatId, lvl, context});
-        const prompt = chatPrompt(context);
+        const prompt = MODEL_PROMPT(context);
         log.log('consolidation prompt', {correlationId, chatId, prompt});
+        const startChatTime = new Date();
         const {content: summary} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
+        const endChatTime = new Date();
         const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
         const summaryTokenCount = await tokenizer.countTokens(correlationId, summary);
+        const endTime = new Date();
+        const extra = {
+            context,
+            prompt,
+            tokenCounts: {
+                prompt: promptTokenCount,
+                summary: summaryTokenCount,
+            },
+            timeStats: {
+                elapsed: endTime - startTime,
+                elapsedChat: endChatTime - startChatTime,
+                startTime,
+                startChatTime,
+                endChatTime,
+                endTime,
+            },
+        };
         return {
             consolidation: {
                 [common.SUMMARY_FIELD]: summary,
                 [common.SUMMARY_EMBEDDING_FIELD]: summaryEmbedding,
-            },
-            extra: {
-                context,
-                prompt,
-                promptTokenCount,
-                summaryTokenCount,
-            },
+            }, extra,
         };
     });
     const consolidationRes = rawConsolidationRes.map(({lvl, index, timestamp, consolidation, extra}) => {
         const {
             [common.SUMMARY_FIELD]: summary,
         } = consolidation;
-        const {context, prompt, promptTokenCount, summaryTokenCount} = extra;
         return {
             lvl,
             index,
             timestamp,
             summary,
-            context,
-            prompt,
-            promptTokenCount,
-            summaryTokenCount,
+            ...extra,
         };
     });
     return {
@@ -61,9 +83,6 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
     };
 });
 
-const chatPrompt = (context) =>
-    `You are GPT. This is an internal system.\n`
-    + `${JSON.stringify(context)}\n`
-    + `summarize`;
-
-export default {consolidate};
+export default {
+    consolidate,
+};
