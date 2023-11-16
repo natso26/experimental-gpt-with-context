@@ -16,6 +16,10 @@ const EXTRA_FIELD = 'extra';
 const SHORT_TERM_SEARCH_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_SHORT_TERM_SEARCH_LOOKBACK_LIMIT);
 const LONG_TERM_SEARCH_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_LONG_TERM_SEARCH_LOOKBACK_LIMIT);
 const MAX_CONSOLIDATION_LVL = parseInt(process.env.MEMORY_MAX_CONSOLIDATION_LVL);
+const BASE_CONSOLIDATION_SIZE = parseInt(process.env.MEMORY_BASE_CONSOLIDATION_SIZE);
+const BASE_CONSOLIDATION_FREQ = parseInt(process.env.MEMORY_BASE_CONSOLIDATION_FREQ);
+const HIGHER_CONSOLIDATION_SIZE = parseInt(process.env.MEMORY_HIGHER_CONSOLIDATION_SIZE);
+const HIGHER_CONSOLIDATION_FREQ = parseInt(process.env.MEMORY_HIGHER_CONSOLIDATION_FREQ);
 
 const db = new firestore.Firestore();
 const coll = db.collection(TOP_LEVEL_COLLECTION);
@@ -107,8 +111,8 @@ const longTermSearch = wrapper.logCorrelationId('repository.memory.longTermSearc
 const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', async (correlationId, chatId, consolidationFn) => {
     const ret = [];
     for (let lvl = 0; lvl <= MAX_CONSOLIDATION_LVL; lvl++) {
-        const prevLvlColl = lvl ? await coll.doc(chatId).collection(CONSOLIDATION_COLLECTION(lvl - 1))
-            : coll.doc(chatId).collection(ELT_COLLECTION);
+        const prevLvlColl = coll.doc(chatId).collection(
+            lvl ? CONSOLIDATION_COLLECTION(lvl - 1) : ELT_COLLECTION);
         const lvlColl = coll.doc(chatId).collection(CONSOLIDATION_COLLECTION(lvl));
         const txnRes = await db.runTransaction(async (txn) => {
             const s = await txn.get(
@@ -117,9 +121,9 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
             const s2 = await txn.get(
                 lvlColl.select(INDEX_FIELD).orderBy(INDEX_FIELD, 'desc').limit(1));
             const latestLvlIndex = s2.empty ? -1 : s2.docs[0].data()[INDEX_FIELD];
-            // NB: the size and interleaving logic is hard coded rather than configurable
-            const targetLvlIndex = lvl ? Math.floor((latestPrevLvlIndex - 3) / 4)
-                : Math.floor((latestPrevLvlIndex - 7) / 4);
+            const size = lvl ? HIGHER_CONSOLIDATION_SIZE : BASE_CONSOLIDATION_SIZE;
+            const freq = lvl ? HIGHER_CONSOLIDATION_FREQ : BASE_CONSOLIDATION_FREQ;
+            const targetLvlIndex = Math.floor((latestPrevLvlIndex - size + 1) / freq);
             if (targetLvlIndex < 0) {
                 return 'final-level';
             }
@@ -127,14 +131,14 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
                 return;
             }
             const prevLvlSnapshot = await txn.get(
-                prevLvlColl.select(INDEX_FIELD, lvl ? CONSOLIDATION_FIELD : ELT_FIELD)
-                    .orderBy(INDEX_FIELD, 'desc').offset((latestPrevLvlIndex + 1) % 4).limit(4 * (targetLvlIndex - latestLvlIndex + !lvl)));
+                prevLvlColl.select(INDEX_FIELD, lvl ? CONSOLIDATION_FIELD : ELT_FIELD).orderBy(INDEX_FIELD, 'desc')
+                    .offset((latestPrevLvlIndex - size + 1) % freq).limit(freq * (targetLvlIndex - latestLvlIndex - 1) + size));
             const prevLvlData = prevLvlSnapshot.docs
                 .map(doc => doc.data()).reverse();
             for (let i = latestLvlIndex + 1; i <= targetLvlIndex; i++) {
-                const raw = prevLvlData.slice(4 * (i - latestLvlIndex - 1), 4 * (i - latestLvlIndex + !lvl));
+                const raw = prevLvlData.slice(freq * (i - latestLvlIndex - 1), freq * (i - latestLvlIndex - 1) + size);
                 const {consolidation, extra} = await consolidationFn(lvl,
-                    lvl ? raw.map(({[CONSOLIDATION_FIELD]: consolidation}) => consolidation) : raw.map(({[ELT_FIELD]: elt}) => elt));
+                    raw.map(({[lvl ? CONSOLIDATION_FIELD : ELT_FIELD]: v}) => v));
                 const timestamp = new Date();
                 await txn.set(lvlColl.doc(), {
                     [INDEX_FIELD]: i,
@@ -159,8 +163,9 @@ const scheduleImagination = wrapper.logCorrelationId('repository.memory.schedule
         const curr = s.data()?.[SCHEDULED_IMAGINATION_FIELD]?.toDate() || null;
         const scheduledImagination = getNext(curr);
         if (scheduledImagination !== curr) {
-            await txn.set(
-                doc, {[SCHEDULED_IMAGINATION_FIELD]: scheduledImagination || firestore.FieldValue.delete()}, {merge: true});
+            await txn.set(doc,
+                {[SCHEDULED_IMAGINATION_FIELD]: scheduledImagination || firestore.FieldValue.delete()},
+                {merge: true});
         }
         return scheduledImagination;
     });
@@ -174,7 +179,7 @@ const imagine = wrapper.logCorrelationId('repository.memory.imagine', async (cor
     log.log(`imagine for chat IDs: ${chatIds}`, {correlationId, chatIds});
     const ret = {};
     for (const chatId of chatIds) {
-        const out = await db.runTransaction(async (txn) => {
+        const o = await db.runTransaction(async (txn) => {
             const doc = coll.doc(chatId);
             const scheduledImagination =
                 (await txn.get(doc)).data()?.[SCHEDULED_IMAGINATION_FIELD]?.toDate();
@@ -187,12 +192,19 @@ const imagine = wrapper.logCorrelationId('repository.memory.imagine', async (cor
             await txn.set(doc, {[SCHEDULED_IMAGINATION_FIELD]: firestore.FieldValue.delete()}, {merge: true});
             return out;
         });
-        ret[chatId] = out;
+        ret[chatId] = o;
     }
     return ret;
 });
 
 export default {
-    add, addImagination, getLatest, getHistory, shortTermSearch, longTermSearch,
-    consolidate, scheduleImagination, imagine,
+    add,
+    addImagination,
+    getLatest,
+    getHistory,
+    shortTermSearch,
+    longTermSearch,
+    consolidate,
+    scheduleImagination,
+    imagine,
 };

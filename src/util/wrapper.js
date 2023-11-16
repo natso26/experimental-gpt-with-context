@@ -20,4 +20,6 @@ const logCorrelationId = (name, fn) => {
     };
 };
 
-export default {logCorrelationId};
+export default {
+    logCorrelationId,
+};

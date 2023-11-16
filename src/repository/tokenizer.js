@@ -10,4 +10,6 @@ const countTokens = wrapper.logCorrelationId('repository.tokenizer.countTokens',
     return tokens.length;
 });
 
-export default {countTokens};
+export default {
+    countTokens,
+};

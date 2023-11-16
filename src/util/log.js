@@ -12,4 +12,6 @@ const log = (message, extra = {}) => {
     console.log(JSON.stringify(entry, null, INDENT));
 };
 
-export default {log};
+export default {
+    log,
+};

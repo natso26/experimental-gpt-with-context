@@ -23,7 +23,7 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
         body: JSON.stringify({
             model: MODEL,
             // NB: we take the approach of foregoing the "chat" capabilities and interpret
-            // all input as the "system message"
+            // all input as "system message"
             messages: [
                 {
                     role: 'system',
@@ -69,4 +69,6 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
     };
 });
 
-export default {chat};
+export default {
+    chat,
+};

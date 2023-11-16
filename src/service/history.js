@@ -8,12 +8,14 @@ const getHistory = wrapper.logCorrelationId('service.history.getHistory', async 
     const rawHistory = await memory.getHistory(correlationId, chatId, offset, limit);
     const history = rawHistory.map((
         {
-            [common.QUESTION_FIELD]: question,
+            [common.QUERY_FIELD]: query,
             [common.REPLY_FIELD]: reply,
-        }) => ({question, reply}));
+        }) => ({query, reply}));
     return {
         history,
     };
 });
 
-export default {getHistory};
+export default {
+    getHistory,
+};
