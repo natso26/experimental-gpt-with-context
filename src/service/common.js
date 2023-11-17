@@ -5,6 +5,7 @@ import log from '../util/log.js';
 const QUERY_FIELD = 'query';
 const QUERY_EMBEDDING_FIELD = 'queryEmbedding';
 const REPLY_FIELD = 'reply';
+const REPLY_EMBEDDING_FIELD = 'replyEmbedding';
 const SUMMARY_FIELD = 'summary';
 const SUMMARY_EMBEDDING_FIELD = 'summaryEmbedding';
 const INTROSPECTION_FIELD = 'introspection';
@@ -49,6 +50,7 @@ export default {
     QUERY_FIELD,
     QUERY_EMBEDDING_FIELD,
     REPLY_FIELD,
+    REPLY_EMBEDDING_FIELD,
     SUMMARY_FIELD,
     SUMMARY_EMBEDDING_FIELD,
     INTROSPECTION_FIELD,
