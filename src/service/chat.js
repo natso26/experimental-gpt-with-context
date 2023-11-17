@@ -197,6 +197,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
     const endTime = new Date();
     const extra = {
+        correlationId,
         shortTermContext,
         longTermContext,
         prelimPrompt,

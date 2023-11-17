@@ -14,7 +14,8 @@ const ELT_FIELD = 'elt';
 const CONSOLIDATION_FIELD = 'consolidation';
 const EXTRA_FIELD = 'extra';
 const SHORT_TERM_SEARCH_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_SHORT_TERM_SEARCH_LOOKBACK_LIMIT);
-const LONG_TERM_SEARCH_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_LONG_TERM_SEARCH_LOOKBACK_LIMIT);
+const LONG_TERM_SEARCH_SUMMARY_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_LONG_TERM_SEARCH_SUMMARY_LOOKBACK_LIMIT);
+const LONG_TERM_SEARCH_IMAGINATION_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_LONG_TERM_SEARCH_IMAGINATION_LOOKBACK_LIMIT);
 const MAX_CONSOLIDATION_LVL = parseInt(process.env.MEMORY_MAX_CONSOLIDATION_LVL);
 const BASE_CONSOLIDATION_SIZE = parseInt(process.env.MEMORY_BASE_CONSOLIDATION_SIZE);
 const BASE_CONSOLIDATION_FREQ = parseInt(process.env.MEMORY_BASE_CONSOLIDATION_FREQ);
@@ -90,15 +91,16 @@ const shortTermSearch = wrapper.logCorrelationId('repository.memory.shortTermSea
 const longTermSearch = wrapper.logCorrelationId('repository.memory.longTermSearch', async (correlationId, chatId, maximizingObjective, numResults) => {
     const data = [];
     for (let lvl = 0; lvl <= MAX_CONSOLIDATION_LVL + 1; lvl++) {
+        const lookbackLimit = lvl ? LONG_TERM_SEARCH_IMAGINATION_LOOKBACK_LIMIT : LONG_TERM_SEARCH_SUMMARY_LOOKBACK_LIMIT;
         const snapshot = await coll.doc(chatId)
             .collection(lvl <= MAX_CONSOLIDATION_LVL ? CONSOLIDATION_COLLECTION(lvl) : IMAGINATION_COLLECTION)
-            .select(INDEX_FIELD, CONSOLIDATION_FIELD).orderBy(INDEX_FIELD, 'desc').limit(LONG_TERM_SEARCH_LOOKBACK_LIMIT).get();
+            .select(INDEX_FIELD, CONSOLIDATION_FIELD).orderBy(INDEX_FIELD, 'desc').limit(lookbackLimit).get();
         if (snapshot.empty) {
             continue;
         }
         const rawLvlData = snapshot.docs.map(doc => doc.data());
         const lvlData = rawLvlData.filter(({[INDEX_FIELD]: index}) =>
-            index > rawLvlData[rawLvlData.length - 1][INDEX_FIELD] - LONG_TERM_SEARCH_LOOKBACK_LIMIT);
+            index > rawLvlData[rawLvlData.length - 1][INDEX_FIELD] - lookbackLimit);
         data.push(...lvlData);
     }
     const getConsolidations = () => data.map(({[CONSOLIDATION_FIELD]: consolidation}) => consolidation);
