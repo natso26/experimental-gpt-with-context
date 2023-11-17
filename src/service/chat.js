@@ -38,6 +38,21 @@ const MODEL_FUNCTIONS = [
     },
 ];
 const QUERY_TOKEN_COUNT_LIMIT = parseInt(process.env.CHAT_QUERY_TOKEN_COUNT_LIMIT);
+const CTX_SCORE_FIRST_ITEMS_COUNT = parseInt(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_COUNT);
+const CTX_SCORE_FIRST_ITEMS_MAX_VAL = parseFloat(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
+const CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY = parseFloat(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY);
+const CTX_SCORE_REST_ITEMS_MULT_FACTOR = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_MULT_FACTOR);
+const CTX_SCORE_REST_ITEMS_IDX_OFFSET = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_OFFSET);
+const CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT);
+const CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR);
+const CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MS_VAL = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_HOUR_VAL) / (3600 * 1000);
+const CTX_SCORE = (i, ms, getSim) => {
+    if (i < CTX_SCORE_FIRST_ITEMS_COUNT) {
+        return CTX_SCORE_FIRST_ITEMS_MAX_VAL - CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY * i;
+    }
+    const idxTimePenalty = CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR * Math.log(CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MS_VAL * ms + 1);
+    return CTX_SCORE_REST_ITEMS_MULT_FACTOR * (i + CTX_SCORE_REST_ITEMS_IDX_OFFSET + idxTimePenalty) ** -CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT * getSim();
+};
 const SHORT_TERM_CONTEXT_COUNT = parseInt(process.env.CHAT_SHORT_TERM_CONTEXT_COUNT);
 const LONG_TERM_CONTEXT_COUNT = parseInt(process.env.CHAT_LONG_TERM_CONTEXT_COUNT);
 const REPLY_TOKEN_COUNT_LIMIT = parseInt(process.env.CHAT_REPLY_TOKEN_COUNT_LIMIT);
@@ -55,12 +70,12 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     }
     const {embedding: queryEmbedding} = await common.embedWithRetry(correlationId, query);
     const rawShortTermContext = await memory.shortTermSearch(correlationId, chatId, (elt, i, timestamp) => {
-        const discount = recencyDiscount(i, startTime - timestamp);
-        if (discount === null) {
-            return 99 - i;
-        }
-        const targetEmbedding = elt[common.QUERY_EMBEDDING_FIELD] || elt[common.INTROSPECTION_EMBEDDING_FIELD];
-        return 10 * common.cosineSimilarity(queryEmbedding, targetEmbedding) * discount;
+        const ms = startTime - timestamp;
+        const getSim = () => {
+            const targetEmbedding = elt[common.QUERY_EMBEDDING_FIELD] || elt[common.INTROSPECTION_EMBEDDING_FIELD];
+            return common.cosineSimilarity(queryEmbedding, targetEmbedding);
+        };
+        return CTX_SCORE(i, ms, getSim);
     }, SHORT_TERM_CONTEXT_COUNT);
     const shortTermContext = rawShortTermContext.map(([{
         [common.QUERY_FIELD]: query,
@@ -267,25 +282,6 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         scheduledImagination,
     };
 });
-
-const recencyDiscount = (i, ms) => {
-    if (i < 2) {
-        return null;
-    }
-    let timePenalty;
-    if (ms <= 0) {
-        timePenalty = 0;
-    } else if (ms <= 3600 * 1000) {
-        timePenalty = ms / (3600 * 1000);
-    } else if (ms <= 6 * 3600 * 1000) {
-        timePenalty = 1 + (ms - 3600 * 1000) / (5 * 3600 * 1000);
-    } else if (ms <= 24 * 3600 * 1000) {
-        timePenalty = 2 + (ms - 6 * 3600 * 1000) / (18 * 3600 * 1000);
-    } else {
-        timePenalty = 3;
-    }
-    return (i + 1.2 + 1.10 * timePenalty) ** -.43;
-};
 
 export default {
     chat,
