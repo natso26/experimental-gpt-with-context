@@ -263,7 +263,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         [common.REPLY_FIELD]: reply,
         [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
     }, extra, false);
-// in background
+    // in background
     fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/consolidate`, {
         method: 'POST',
         headers: {
@@ -275,7 +275,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         log.log('chat: fetch /api/consolidate failed, likely timed out', {
             correlationId, chatId, error: e.message || '', stack: e.stack || '',
         }));
-// in background
+    // in background
     fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/introspect`, {
         method: 'POST',
         headers: {
