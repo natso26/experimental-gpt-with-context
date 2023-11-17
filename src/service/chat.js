@@ -309,8 +309,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         ...extra,
         scheduledImagination,
     };
-})
-
+});
 
 export default {
     chat,
