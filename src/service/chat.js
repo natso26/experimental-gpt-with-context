@@ -72,8 +72,17 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     const rawShortTermContext = await memory.shortTermSearch(correlationId, chatId, (elt, i, timestamp) => {
         const ms = startTime - timestamp;
         const getSim = () => {
-            const targetEmbedding = elt[common.QUERY_EMBEDDING_FIELD] || elt[common.INTROSPECTION_EMBEDDING_FIELD];
-            return common.cosineSimilarity(queryEmbedding, targetEmbedding);
+            const {
+                [common.QUERY_EMBEDDING_FIELD]: queryEmbedding,
+                [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
+                [common.INTROSPECTION_EMBEDDING_FIELD]: introspectionEmbedding,
+            } = elt;
+            if (introspectionEmbedding) {
+                return common.cosineSimilarity(queryEmbedding, introspectionEmbedding);
+            } else {
+                return Math.sqrt(common.cosineSimilarity(queryEmbedding, queryEmbedding)
+                    * common.cosineSimilarity(queryEmbedding, replyEmbedding));
+            }
         };
         return CTX_SCORE(i, ms, getSim);
     }, SHORT_TERM_CONTEXT_COUNT);
@@ -194,6 +203,11 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     }
     const prelimPromptTokenCount = await tokenizer.countTokens(correlationId, prelimPrompt);
     const reply = prelimReply || updatedReply;
+    let replyEmbedding = null;
+    if (!isSubroutine) {
+        const {embedding: replyEmbedding_} = await common.embedWithRetry(correlationId, reply);
+        replyEmbedding = replyEmbedding_;
+    }
     const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
     const endTime = new Date();
     const extra = {
@@ -235,6 +249,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         [common.QUERY_FIELD]: query,
         [common.QUERY_EMBEDDING_FIELD]: queryEmbedding,
         [common.REPLY_FIELD]: reply,
+        [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
     }, extra, false);
     // in background
     fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/consolidate`, {
