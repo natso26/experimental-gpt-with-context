@@ -9,9 +9,9 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
-    `You are GPT. This is an internal system.\n`
-    + `${JSON.stringify(context)}\n`
-    + `summarize`;
+    `You are GPT. This is an internal system.`
+    + `\n${JSON.stringify(context)}`
+    + `\nsummarize`;
 const TOKEN_COUNT_LIMIT = parseInt(process.env.CONSOLIDATION_TOKEN_COUNT_LIMIT);
 
 const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate', async (correlationId, chatId) => {

@@ -7,9 +7,9 @@ import wrapper from '../util/wrapper.js';
 const MODEL_PROMPT_QUERY_FIELD = 'query';
 const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT = (context) =>
-    `You are GPT. This is an internal system.\n`
-    + `short-term memory: ${JSON.stringify(context)}\n`
-    + `thoughts`;
+    `You are GPT. This is an internal system.`
+    + `\nshort-term memory: ${JSON.stringify(context)}`
+    + `\nthoughts`;
 const MIN_WAIT_TIME = parseInt(process.env.INTROSPECTION_MIN_WAIT_TIME_SECS) * 1000;
 const MAX_WAIT_TIME = parseInt(process.env.INTROSPECTION_MAX_WAIT_TIME_SECS) * 1000;
 const CONTEXT_COUNT = parseInt(process.env.INTROSPECTION_CONTEXT_COUNT);
