@@ -7,9 +7,9 @@ import tokenizer from "../repository/tokenizer.js";
 const MODEL_PROMPT_SCORE_FIELD = 'score';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
-    `You are GPT. This is an internal system.\n`
-    + `long-term memory: ${JSON.stringify(context)}\n`
-    + `thoughts`;
+    `You are GPT. This is an internal system.`
+    + `\nlong-term memory: ${JSON.stringify(context)}`
+    + `\nthoughts`;
 const CONTEXT_COUNT = parseInt(process.env.IMAGINATION_CONTEXT_COUNT);
 const TOKEN_COUNT_LIMIT = parseInt(process.env.IMAGINATION_TOKEN_COUNT_LIMIT);
 

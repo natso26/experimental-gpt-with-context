@@ -12,12 +12,13 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_SUMMARY_FIELD = 'summary';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_IMAGINATION_FIELD = 'imagination';
-const MODEL_PROMPT = (subroutineResults, longTermContext, shortTermContext, query) =>
-    `You are GPT. This is an external system.\n`
-    + (!subroutineResults.length ? '' : `internal subroutines: ${JSON.stringify(subroutineResults)}\n`)
-    + `long-term memory: ${JSON.stringify(longTermContext)}\n`
-    + `short-term memory: ${JSON.stringify(shortTermContext)}\n`
-    + `user: ${JSON.stringify(query)}`;
+const MODEL_PROMPT = (subroutineResults, longTermContext, shortTermContext, query, subroutineQuery) =>
+    `You are GPT. This is an external system.`
+    + (!subroutineResults.length ? '' : `\ninternal subroutines: ${JSON.stringify(subroutineResults)}`)
+    + `\nlong-term memory: ${JSON.stringify(longTermContext)}`
+    + `\nshort-term memory: ${JSON.stringify(shortTermContext)}`
+    + `\nuser: ${JSON.stringify(query)}`
+    + (!subroutineQuery ? '' : `\nquery: ${JSON.stringify(subroutineQuery)}`);
 const MODEL_RECURSION_FUNCTION_NAME = 'thoughts';
 const MODEL_RECURSION_FUNCTION_ARG_NAME = 'query';
 const MODEL_FUNCTIONS = [
@@ -60,8 +61,8 @@ const CHAT_RECURSION_TIMEOUT = parseInt(process.env.CHAT_RECURSION_TIMEOUT_SECS)
 const MIN_SCHEDULED_IMAGINATION_DELAY = parseInt(process.env.CHAT_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 const MAX_SCHEDULED_IMAGINATION_DELAY = parseInt(process.env.CHAT_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 
-const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId, chatId, query, isSubroutine) => {
-    log.log('chat service parameters', {correlationId, chatId, query, isSubroutine});
+const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId, chatId, query, subroutineQuery, forbiddenRecursedQueries) => {
+    log.log('chat service parameters', {correlationId, chatId, query, subroutineQuery, forbiddenRecursedQueries});
     const startTime = new Date();
     const queryTokenCount = await tokenizer.countTokens(correlationId, query);
     log.log('chat query token count', {correlationId, chatId, queryTokenCount});
@@ -73,14 +74,14 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         const ms = startTime - timestamp;
         const getSim = () => {
             const {
-                [common.QUERY_EMBEDDING_FIELD]: queryEmbedding,
+                [common.QUERY_EMBEDDING_FIELD]: targetQueryEmbedding,
                 [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
                 [common.INTROSPECTION_EMBEDDING_FIELD]: introspectionEmbedding,
             } = elt;
             if (introspectionEmbedding) {
                 return common.cosineSimilarity(queryEmbedding, introspectionEmbedding);
             } else {
-                return Math.sqrt(common.cosineSimilarity(queryEmbedding, queryEmbedding)
+                return Math.sqrt(common.cosineSimilarity(queryEmbedding, targetQueryEmbedding)
                     * common.cosineSimilarity(queryEmbedding, replyEmbedding));
             }
         };
@@ -116,7 +117,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             [MODEL_PROMPT_IMAGINATION_FIELD]: imagination,
         }).reverse();
     log.log('chat long-term context', {correlationId, chatId, longTermContext});
-    const prelimPrompt = MODEL_PROMPT([], longTermContext, shortTermContext, query);
+    const prelimPrompt = MODEL_PROMPT([], longTermContext, shortTermContext, query, subroutineQuery);
     log.log('chat prelim prompt', {correlationId, chatId, prelimPrompt});
     const startPrelimChatTime = new Date();
     const {content: prelimReply, functionCalls: rawFunctionCalls} = await common.chatWithRetry(
@@ -134,6 +135,12 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     if (!prelimReply) {
         log.log('chat function calls', {correlationId, chatId, functionCalls});
         startFunctionCallsTime = new Date();
+        // NB: guard against common patterns such as abb... and abcbc...
+        const updatedForbiddenRecursedQueries = [...new Set([
+            ...forbiddenRecursedQueries,
+            query,
+            ...(!subroutineQuery ? [] : [subroutineQuery]),
+        ])];
         for (const {name, args} of functionCalls) {
             switch (name) {
                 case MODEL_RECURSION_FUNCTION_NAME:
@@ -143,11 +150,13 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
                             {correlationId, chatId, name, args});
                         continue;
                     }
-                    if (recursedQuery === query) {
-                        log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: query is the same`,
-                            {correlationId, chatId, name, args});
+                    if (updatedForbiddenRecursedQueries.includes(recursedQuery)) {
+                        log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: query is forbidden`,
+                            {correlationId, chatId, name, args, recursedQuery, updatedForbiddenRecursedQueries});
                         continue;
                     }
+                    log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: query is allowed`,
+                        {correlationId, chatId, name, args, recursedQuery, updatedForbiddenRecursedQueries});
                     const recursedCorrelationId = uuid.v4();
                     log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: recursed correlation id`,
                         {correlationId, chatId, name, recursedQuery, recursedCorrelationId});
@@ -158,7 +167,10 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
                                 'Content-Type': 'application/json',
                                 'X-Correlation-Id': recursedCorrelationId,
                             },
-                            body: JSON.stringify({chatId, query: recursedQuery, isSubroutine: true}),
+                            body: JSON.stringify({
+                                chatId, query, subroutineQuery: recursedQuery,
+                                forbiddenRecursedQueries: updatedForbiddenRecursedQueries,
+                            }),
                         }, CHAT_RECURSION_TIMEOUT);
                         if (!res.ok) {
                             throw new Error(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: api error, status: ${res.status}`);
@@ -192,7 +204,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             [MODEL_PROMPT_QUERY_FIELD]: query,
             [MODEL_PROMPT_REPLY_FIELD]: reply,
         }));
-        updatedPrompt = MODEL_PROMPT(subroutineResults, longTermContext, shortTermContext, query);
+        updatedPrompt = MODEL_PROMPT(subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
         log.log('chat updated prompt', {correlationId, chatId, updatedPrompt});
         startUpdatedChatTime = new Date();
         const {content: updatedReply_} = await common.chatWithRetry(
@@ -204,7 +216,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     const prelimPromptTokenCount = await tokenizer.countTokens(correlationId, prelimPrompt);
     const reply = prelimReply || updatedReply;
     let replyEmbedding = null;
-    if (!isSubroutine) {
+    if (!subroutineQuery) {
         const {embedding: replyEmbedding_} = await common.embedWithRetry(correlationId, reply);
         replyEmbedding = replyEmbedding_;
     }
@@ -239,7 +251,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             endTime,
         },
     };
-    if (isSubroutine) {
+    if (subroutineQuery) {
         return {
             reply,
             ...extra,
@@ -251,7 +263,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         [common.REPLY_FIELD]: reply,
         [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
     }, extra, false);
-    // in background
+// in background
     fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/consolidate`, {
         method: 'POST',
         headers: {
@@ -263,7 +275,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         log.log('chat: fetch /api/consolidate failed, likely timed out', {
             correlationId, chatId, error: e.message || '', stack: e.stack || '',
         }));
-    // in background
+// in background
     fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/introspect`, {
         method: 'POST',
         headers: {
@@ -297,7 +309,8 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         ...extra,
         scheduledImagination,
     };
-});
+})
+
 
 export default {
     chat,
