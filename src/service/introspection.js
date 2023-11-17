@@ -51,6 +51,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
     const introspectionTokenCount = await tokenizer.countTokens(correlationId, introspection);
     const endTime = new Date();
     const extra = {
+        correlationId,
         inputIndex: index,
         waitTime,
         context,
