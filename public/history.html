@@ -44,7 +44,7 @@
         .buttons-panel {
             display: flex;
             flex-direction: row;
-            width: calc(85% + 20px);
+            width: calc(85% + 22px);
             justify-content: space-between;
             align-items: center;
         }
@@ -131,7 +131,7 @@
             if (!resp.ok) {
                 const error = await resp.json();
                 console.log({error});
-                historyBox.innerHTML = JSON.stringify(error, null, 2);
+                historyBox.value = JSON.stringify(error, null, 2);
             } else {
                 const data = await resp.json();
                 console.log({data});
@@ -139,10 +139,11 @@
                 for (const [i, {query, reply}] of data.history.reverse().entries()) {
                     history += `=== Query ${offset + i} ===\n\n${query}\n\n=== Reply ${offset + i} ===\n\n${reply}\n\n\n`;
                 }
-                historyBox.innerHTML = history;
+                historyBox.value = history;
             }
         } catch (e) {
-            historyBox.innerHTML = e.message || 'There was an error fetching the response.';
+            console.log({e});
+            historyBox.value = e.message || 'There was an error fetching the response.';
         }
         chatIdBox.disabled = false;
         offsetInput.disabled = false;

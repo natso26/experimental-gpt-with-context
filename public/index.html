@@ -11,6 +11,14 @@
             color: #262626;
         }
 
+        .footnote {
+            font-size: 14px;
+            text-align: right;
+            width: calc(85% + 22px);
+            margin: 4px 0 0 0;
+            color: #bbb;
+        }
+
         .text-box {
             font-family: monospace;
             font-size: 15px;
@@ -23,7 +31,7 @@
         .buttons-panel {
             display: flex;
             flex-direction: row;
-            width: calc(85% + 20px);
+            width: calc(85% + 22px);
             justify-content: space-between;
             align-items: center;
         }
@@ -63,6 +71,7 @@
 <div>
     <textarea class="text-box" disabled id="reply" rows="16"></textarea>
 </div>
+<div class="footnote" id="note"></div>
 
 <script>
     const chatIdBox = document.getElementById('chat-id');
@@ -70,6 +79,7 @@
     const submitButton = document.getElementById('submit');
     const historyButton = document.getElementById('history');
     const replyBox = document.getElementById('reply');
+    const noteArea = document.getElementById('note');
     const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
         const r = Math.random() * 16 | 0;
         const v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -90,6 +100,7 @@
         chatIdBox.disabled = true;
         queryBox.disabled = true;
         submitButton.disabled = true;
+        const start = Date.now();
         try {
             const resp = await fetch('/api/chat', {
                 method: 'POST',
@@ -98,17 +109,23 @@
                 },
                 body: JSON.stringify({chatId, query}),
             });
+            const end = Date.now();
             if (!resp.ok) {
                 const error = await resp.json();
                 console.log({error});
-                replyBox.innerHTML = JSON.stringify(error, null, 2);
+                replyBox.value = JSON.stringify(error, null, 2);
+                noteArea.innerText = `${Math.round((end - start) / 1000)}s (failed)`;
             } else {
                 const data = await resp.json();
                 console.log({data});
-                replyBox.innerHTML = data.reply;
+                replyBox.value = data.reply;
+                noteArea.innerText = `${Math.round((end - start) / 1000)}s`;
             }
         } catch (e) {
-            replyBox.innerHTML = e.message || 'There was an error fetching the response.';
+            const end = Date.now();
+            console.log({e});
+            replyBox.value = e.message || 'There was an error fetching the response.';
+            noteArea.innerText = `${Math.round((end - start) / 1000)}s (failed)`;
         }
         chatIdBox.disabled = false;
         queryBox.disabled = false;
