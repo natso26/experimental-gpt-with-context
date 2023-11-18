@@ -3,6 +3,7 @@ import tokenizer from '../repository/tokenizer.js';
 import memory from '../repository/memory.js';
 import common from './common.js';
 import fetch_ from '../util/fetch.js';
+import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
@@ -38,15 +39,15 @@ const MODEL_FUNCTIONS = [
         },
     },
 ];
-const QUERY_TOKEN_COUNT_LIMIT = parseInt(process.env.CHAT_QUERY_TOKEN_COUNT_LIMIT);
-const CTX_SCORE_FIRST_ITEMS_COUNT = parseInt(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_COUNT);
-const CTX_SCORE_FIRST_ITEMS_MAX_VAL = parseFloat(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
-const CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY = parseFloat(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY);
-const CTX_SCORE_REST_ITEMS_MULT_FACTOR = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_MULT_FACTOR);
-const CTX_SCORE_REST_ITEMS_IDX_OFFSET = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_OFFSET);
-const CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT);
-const CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR);
-const CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MS_VAL = parseFloat(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_HOUR_VAL) / (3600 * 1000);
+const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.CHAT_QUERY_TOKEN_COUNT_LIMIT);
+const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_COUNT);
+const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
+const CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY = strictParse.float(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY);
+const CTX_SCORE_REST_ITEMS_MULT_FACTOR = strictParse.float(process.env.CHAT_CTX_SCORE_REST_ITEMS_MULT_FACTOR);
+const CTX_SCORE_REST_ITEMS_IDX_OFFSET = strictParse.float(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_OFFSET);
+const CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT = strictParse.float(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT);
+const CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR = strictParse.float(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR);
+const CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MS_VAL = strictParse.float(process.env.CHAT_CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_HOUR_VAL) / (3600 * 1000);
 const CTX_SCORE = (i, ms, getSim) => {
     if (i < CTX_SCORE_FIRST_ITEMS_COUNT) {
         return CTX_SCORE_FIRST_ITEMS_MAX_VAL - CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY * i;
@@ -54,12 +55,12 @@ const CTX_SCORE = (i, ms, getSim) => {
     const idxTimePenalty = CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR * Math.log(CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MS_VAL * ms + 1);
     return CTX_SCORE_REST_ITEMS_MULT_FACTOR * (i + CTX_SCORE_REST_ITEMS_IDX_OFFSET + idxTimePenalty) ** -CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT * getSim();
 };
-const SHORT_TERM_CONTEXT_COUNT = parseInt(process.env.CHAT_SHORT_TERM_CONTEXT_COUNT);
-const LONG_TERM_CONTEXT_COUNT = parseInt(process.env.CHAT_LONG_TERM_CONTEXT_COUNT);
-const REPLY_TOKEN_COUNT_LIMIT = parseInt(process.env.CHAT_REPLY_TOKEN_COUNT_LIMIT);
-const CHAT_RECURSION_TIMEOUT = parseInt(process.env.CHAT_RECURSION_TIMEOUT_SECS) * 1000;
-const MIN_SCHEDULED_IMAGINATION_DELAY = parseInt(process.env.CHAT_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
-const MAX_SCHEDULED_IMAGINATION_DELAY = parseInt(process.env.CHAT_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
+const SHORT_TERM_CONTEXT_COUNT = strictParse.int(process.env.CHAT_SHORT_TERM_CONTEXT_COUNT);
+const LONG_TERM_CONTEXT_COUNT = strictParse.int(process.env.CHAT_LONG_TERM_CONTEXT_COUNT);
+const REPLY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.CHAT_REPLY_TOKEN_COUNT_LIMIT);
+const CHAT_RECURSION_TIMEOUT = strictParse.int(process.env.CHAT_RECURSION_TIMEOUT_SECS) * 1000;
+const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.CHAT_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
+const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.CHAT_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 
 const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId, chatId, query, subroutineQuery, forbiddenRecursedQueries) => {
     log.log('chat service parameters', {correlationId, chatId, query, subroutineQuery, forbiddenRecursedQueries});
@@ -141,6 +142,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             query,
             ...(!subroutineQuery ? [] : [subroutineQuery]),
         ])];
+        const subtasks = [];
         for (const {name, args} of functionCalls) {
             switch (name) {
                 case MODEL_RECURSION_FUNCTION_NAME:
@@ -160,41 +162,46 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
                     const recursedCorrelationId = uuid.v4();
                     log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: recursed correlation id`,
                         {correlationId, chatId, name, recursedQuery, recursedCorrelationId});
-                    try {
-                        const res = await fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/chat`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-Correlation-Id': recursedCorrelationId,
-                            },
-                            body: JSON.stringify({
-                                chatId, query, subroutineQuery: recursedQuery,
-                                forbiddenRecursedQueries: updatedForbiddenRecursedQueries,
-                            }),
-                        }, CHAT_RECURSION_TIMEOUT);
-                        if (!res.ok) {
-                            throw new Error(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: api error, status: ${res.status}`);
+                    subtasks.push(async () => {
+                        try {
+                            const res = await fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/chat`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Correlation-Id': recursedCorrelationId,
+                                },
+                                body: JSON.stringify({
+                                    chatId, query, subroutineQuery: recursedQuery,
+                                    forbiddenRecursedQueries: updatedForbiddenRecursedQueries,
+                                }),
+                            }, CHAT_RECURSION_TIMEOUT);
+                            if (!res.ok) {
+                                throw new Error(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: api error, status: ${res.status}`);
+                            }
+                            const data = await res.json();
+                            const functionResult = {
+                                query: recursedQuery,
+                                ...data,
+                            };
+                            log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: result`, {
+                                correlationId, chatId, name, recursedCorrelationId, functionResult,
+                            });
+                            return functionResult;
+                        } catch (e) {
+                            log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: failed`, {
+                                correlationId, chatId, name, recursedQuery, recursedCorrelationId,
+                                error: e.message || '', stack: e.stack || '',
+                            });
+                            return null;
                         }
-                        const data = await res.json();
-                        const functionResult = {
-                            query: recursedQuery,
-                            ...data,
-                        };
-                        log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: result`, {
-                            correlationId, chatId, name, recursedCorrelationId, functionResult,
-                        });
-                        functionResults.push(functionResult);
-                    } catch (e) {
-                        log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: failed`, {
-                            correlationId, chatId, name, recursedQuery, recursedCorrelationId,
-                            error: e.message || '', stack: e.stack || '',
-                        });
-                    }
+                    });
                     break;
                 default:
                     log.log(`chat: unknown function call: ${name}`, {correlationId, chatId, name, args});
             }
         }
+        functionResults = (await Promise.all(subtasks.map((f) => f())))
+            .filter((v) => v);
         endFunctionCallsTime = new Date();
         if (!functionResults.length) {
             log.log('chat: function call: no viable result; no special action needed',

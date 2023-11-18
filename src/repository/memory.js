@@ -1,4 +1,5 @@
 import firestore from '@google-cloud/firestore';
+import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
@@ -13,14 +14,14 @@ const IS_INTERNAL_FIELD = 'isInternal';
 const ELT_FIELD = 'elt';
 const CONSOLIDATION_FIELD = 'consolidation';
 const EXTRA_FIELD = 'extra';
-const SHORT_TERM_SEARCH_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_SHORT_TERM_SEARCH_LOOKBACK_LIMIT);
-const LONG_TERM_SEARCH_SUMMARY_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_LONG_TERM_SEARCH_SUMMARY_LOOKBACK_LIMIT);
-const LONG_TERM_SEARCH_IMAGINATION_LOOKBACK_LIMIT = parseInt(process.env.MEMORY_LONG_TERM_SEARCH_IMAGINATION_LOOKBACK_LIMIT);
-const MAX_CONSOLIDATION_LVL = parseInt(process.env.MEMORY_MAX_CONSOLIDATION_LVL);
-const BASE_CONSOLIDATION_SIZE = parseInt(process.env.MEMORY_BASE_CONSOLIDATION_SIZE);
-const BASE_CONSOLIDATION_FREQ = parseInt(process.env.MEMORY_BASE_CONSOLIDATION_FREQ);
-const HIGHER_CONSOLIDATION_SIZE = parseInt(process.env.MEMORY_HIGHER_CONSOLIDATION_SIZE);
-const HIGHER_CONSOLIDATION_FREQ = parseInt(process.env.MEMORY_HIGHER_CONSOLIDATION_FREQ);
+const SHORT_TERM_SEARCH_LOOKBACK_LIMIT = strictParse.int(process.env.MEMORY_SHORT_TERM_SEARCH_LOOKBACK_LIMIT);
+const LONG_TERM_SEARCH_SUMMARY_LOOKBACK_LIMIT = strictParse.int(process.env.MEMORY_LONG_TERM_SEARCH_SUMMARY_LOOKBACK_LIMIT);
+const LONG_TERM_SEARCH_IMAGINATION_LOOKBACK_LIMIT = strictParse.int(process.env.MEMORY_LONG_TERM_SEARCH_IMAGINATION_LOOKBACK_LIMIT);
+const MAX_CONSOLIDATION_LVL = strictParse.int(process.env.MEMORY_MAX_CONSOLIDATION_LVL);
+const BASE_CONSOLIDATION_SIZE = strictParse.int(process.env.MEMORY_BASE_CONSOLIDATION_SIZE);
+const BASE_CONSOLIDATION_FREQ = strictParse.int(process.env.MEMORY_BASE_CONSOLIDATION_FREQ);
+const HIGHER_CONSOLIDATION_SIZE = strictParse.int(process.env.MEMORY_HIGHER_CONSOLIDATION_SIZE);
+const HIGHER_CONSOLIDATION_FREQ = strictParse.int(process.env.MEMORY_HIGHER_CONSOLIDATION_FREQ);
 
 const db = new firestore.Firestore();
 const coll = db.collection(TOP_LEVEL_COLLECTION);
