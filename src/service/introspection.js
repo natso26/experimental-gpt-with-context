@@ -1,6 +1,7 @@
 import tokenizer from '../repository/tokenizer.js';
 import memory from '../repository/memory.js';
 import common from './common.js';
+import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
@@ -10,10 +11,10 @@ const MODEL_PROMPT = (context) =>
     `You are GPT. This is an internal system.`
     + `\nshort-term memory: ${JSON.stringify(context)}`
     + `\nthoughts`;
-const MIN_WAIT_TIME = parseInt(process.env.INTROSPECTION_MIN_WAIT_TIME_SECS) * 1000;
-const MAX_WAIT_TIME = parseInt(process.env.INTROSPECTION_MAX_WAIT_TIME_SECS) * 1000;
-const CONTEXT_COUNT = parseInt(process.env.INTROSPECTION_CONTEXT_COUNT);
-const TOKEN_COUNT_LIMIT = parseInt(process.env.INTROSPECTION_TOKEN_COUNT_LIMIT);
+const MIN_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MIN_WAIT_TIME_SECS) * 1000;
+const MAX_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MAX_WAIT_TIME_SECS) * 1000;
+const CONTEXT_COUNT = strictParse.int(process.env.INTROSPECTION_CONTEXT_COUNT);
+const TOKEN_COUNT_LIMIT = strictParse.int(process.env.INTROSPECTION_TOKEN_COUNT_LIMIT);
 
 const introspect = wrapper.logCorrelationId('service.introspection.introspect', async (correlationId, chatId, index) => {
     log.log('introspection service parameters', {correlationId, chatId, index});

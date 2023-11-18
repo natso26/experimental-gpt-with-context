@@ -1,8 +1,9 @@
+import tokenizer from '../repository/tokenizer.js';
 import memory from '../repository/memory.js';
 import common from './common.js';
+import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
-import tokenizer from "../repository/tokenizer.js";
 
 const MODEL_PROMPT_SCORE_FIELD = 'score';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
@@ -10,8 +11,8 @@ const MODEL_PROMPT = (context) =>
     `You are GPT. This is an internal system.`
     + `\nlong-term memory: ${JSON.stringify(context)}`
     + `\nthoughts`;
-const CONTEXT_COUNT = parseInt(process.env.IMAGINATION_CONTEXT_COUNT);
-const TOKEN_COUNT_LIMIT = parseInt(process.env.IMAGINATION_TOKEN_COUNT_LIMIT);
+const CONTEXT_COUNT = strictParse.int(process.env.IMAGINATION_CONTEXT_COUNT);
+const TOKEN_COUNT_LIMIT = strictParse.int(process.env.IMAGINATION_TOKEN_COUNT_LIMIT);
 
 const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (correlationId) => {
     log.log('imagination service parameters', {correlationId});

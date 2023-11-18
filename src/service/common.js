@@ -1,5 +1,6 @@
 import embedding from '../repository/embedding.js';
 import chat from '../repository/chat.js';
+import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 
 const QUERY_FIELD = 'query';
@@ -12,8 +13,8 @@ const INTROSPECTION_FIELD = 'introspection';
 const INTROSPECTION_EMBEDDING_FIELD = 'introspectionEmbedding';
 const IMAGINATION_FIELD = 'imagination';
 const IMAGINATION_EMBEDDING_FIELD = 'imaginationEmbedding';
-const EMBED_RETRY_COUNT = parseInt(process.env.EMBED_REPOSITORY_RETRY_COUNT);
-const CHAT_RETRY_COUNT = parseInt(process.env.CHAT_REPOSITORY_RETRY_COUNT);
+const EMBED_RETRY_COUNT = strictParse.int(process.env.EMBED_REPOSITORY_RETRY_COUNT);
+const CHAT_RETRY_COUNT = strictParse.int(process.env.CHAT_REPOSITORY_RETRY_COUNT);
 
 const cosineSimilarity = (a, b) => a.map((e, i) => e * b[i]).reduce((x, y) => x + y);
 
