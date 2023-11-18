@@ -200,7 +200,8 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
                     log.log(`chat: unknown function call: ${name}`, {correlationId, chatId, name, args});
             }
         }
-        functionResults = await Promise.all(subtasks.map((f) => f()));
+        functionResults = (await Promise.all(subtasks.map((f) => f())))
+            .filter((v) => v);
         endFunctionCallsTime = new Date();
         if (!functionResults.length) {
             log.log('chat: function call: no viable result; no special action needed',
