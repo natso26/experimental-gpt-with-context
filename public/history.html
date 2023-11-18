@@ -9,8 +9,8 @@
             flex-direction: column;
             font-family: monospace;
             font-size: 16px;
-            margin: 16px 0 0 12px;
-            height: calc(100vh - 16px);
+            margin: 15px 0 0 14px;
+            height: calc(100vh - 15px);
             color: #262626;
         }
 
@@ -21,7 +21,7 @@
         .text-box {
             font-family: monospace;
             font-size: 15px;
-            width: 85%;
+            width: 84%;
             border: 1px solid #bbb;
             border-radius: 8px;
             padding: 10px;
@@ -36,7 +36,7 @@
             font-size: 15px;
             text-align: right;
             border: 1px solid #bbb;
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 4px;
             width: 3em;
         }
@@ -44,7 +44,7 @@
         .buttons-panel {
             display: flex;
             flex-direction: row;
-            width: calc(85% + 22px);
+            width: calc(84% + 22px);
             justify-content: space-between;
             align-items: center;
         }
@@ -52,9 +52,9 @@
         .button {
             font-family: monospace;
             font-size: 14px;
-            width: 110px;
+            width: 108px;
             border: none;
-            border-radius: 18px;
+            border-radius: 16px;
             padding: 8px;
             margin: 4px 0 0 0;
             background-color: aliceblue;
@@ -80,7 +80,7 @@
     </div>
     <button class="button button-recolor" id="chat">Chat</button>
 </div>
-<br>
+<br><br>
 <label for="history">History</label>
 <div class="div-reheight">
     <textarea class="text-box text-box-reheight" disabled id="history"></textarea>
@@ -137,7 +137,7 @@
                 console.log({data});
                 let history = '';
                 for (const [i, {query, reply}] of data.history.reverse().entries()) {
-                    history += `=== Query ${offset + i} ===\n\n${query}\n\n=== Reply ${offset + i} ===\n\n${reply}\n\n\n`;
+                    history += `\n=== Query ${-(offset + i)} ===\n\n${query}\n\n=== Reply ${-(offset + i)} ===\n\n${reply}\n\n`;
                 }
                 historyBox.value = history;
             }
