@@ -1,5 +1,6 @@
 import embedding from '../repository/embedding.js';
 import chat from '../repository/chat.js';
+import wolframAlpha from '../repository/wolframAlpha.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 
@@ -15,6 +16,7 @@ const IMAGINATION_FIELD = 'imagination';
 const IMAGINATION_EMBEDDING_FIELD = 'imaginationEmbedding';
 const EMBED_RETRY_COUNT = strictParse.int(process.env.EMBED_REPOSITORY_RETRY_COUNT);
 const CHAT_RETRY_COUNT = strictParse.int(process.env.CHAT_REPOSITORY_RETRY_COUNT);
+const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_REPOSITORY_RETRY_COUNT);
 
 const cosineSimilarity = (a, b) => a.map((e, i) => e * b[i]).reduce((x, y) => x + y);
 
@@ -47,6 +49,13 @@ const chatWithRetry = retry(chat.chat, (e, cnt) => {
     return cnt < CHAT_RETRY_COUNT;
 });
 
+const wolframAlphaQueryWithRetry = retry(wolframAlpha.query, (e, cnt) => {
+    log.log(`wolfram alpha query repository failed, retry count: ${cnt}`, {
+        cnt, error: e.message || '', stack: e.stack || '',
+    });
+    return cnt < WOLFRAM_ALPHA_QUERY_RETRY_COUNT;
+});
+
 export default {
     QUERY_FIELD,
     QUERY_EMBEDDING_FIELD,
@@ -61,4 +70,5 @@ export default {
     cosineSimilarity,
     embedWithRetry,
     chatWithRetry,
+    wolframAlphaQueryWithRetry,
 };

@@ -13,8 +13,9 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_SUMMARY_FIELD = 'summary';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_IMAGINATION_FIELD = 'imagination';
-const MODEL_PROMPT = (subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery) =>
+const MODEL_PROMPT = (info, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery) =>
     `You are GPT. This is an external system.`
+    + (!info.length ? '' : `\ninternal automated system: ${JSON.stringify(info)}`)
     + `\ninternal subroutine history: ${JSON.stringify(subroutineHistory)}`
     + (!subroutineResults.length ? '' : `\ninternal subroutines: ${JSON.stringify(subroutineResults)}`)
     + `\nlong-term memory: ${JSON.stringify(longTermContext)}`
@@ -72,6 +73,18 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     if (queryTokenCount > QUERY_TOKEN_COUNT_LIMIT) {
         throw new Error(`chat query token count exceeds limit of ${QUERY_TOKEN_COUNT_LIMIT}: ${queryTokenCount}`);
     }
+    let info = [];
+    // NB: avoid wolfram alpha at top level; it overly influences GPT
+    if (subroutineQuery) {
+        try {
+            const {pods: info_} = await common.wolframAlphaQueryWithRetry(correlationId, subroutineQuery);
+            info = info_;
+        } catch (e) {
+            log.log('chat wolfram alpha query failed; continue since it is not critical',
+                {correlationId, chatId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
+        }
+    }
+    log.log('chat info', {correlationId, chatId, info});
     const rawSubroutineHistory = await memory.getSubroutines(correlationId, chatId, SUBROUTINE_HISTORY_COUNT);
     const subroutineHistory = rawSubroutineHistory.map(
         ({
@@ -130,7 +143,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         }).reverse();
     log.log('chat long-term context', {correlationId, chatId, longTermContext});
     const prelimPrompt = MODEL_PROMPT(
-        subroutineHistory, [], longTermContext, shortTermContext, query, subroutineQuery);
+        info, subroutineHistory, [], longTermContext, shortTermContext, query, subroutineQuery);
     log.log('chat prelim prompt', {correlationId, chatId, prelimPrompt});
     const startPrelimChatTime = new Date();
     const {content: prelimReply, functionCalls: rawFunctionCalls} = await common.chatWithRetry(
@@ -148,11 +161,11 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     if (!prelimReply) {
         log.log('chat function calls', {correlationId, chatId, functionCalls});
         startFunctionCallsTime = new Date();
-        // NB: guard against common patterns such as abb... and abcbc...
+        // NB: GPT likes to recurse with same query, or one of its siblings (a -> [b, c]; b -> c; c -> b).
+        //  We do allow recursing to a sibling, but to prevent infinite recursion, we forbid repeating an ancestor.
+        //  Except top-level query is allowed to immediately repeat to leverage wolfram alpha.
         const updatedForbiddenRecursedQueries = [...new Set([
-            ...forbiddenRecursedQueries,
-            query,
-            ...(!subroutineQuery ? [] : [subroutineQuery]),
+            ...forbiddenRecursedQueries, ...(!subroutineQuery ? [] : [query, subroutineQuery]),
         ])];
         const subtasks = [];
         for (const {name, args} of functionCalls) {
@@ -224,7 +237,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             [MODEL_PROMPT_REPLY_FIELD]: reply,
         }));
         updatedPrompt = MODEL_PROMPT(
-            subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
+            info, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
         log.log('chat updated prompt', {correlationId, chatId, updatedPrompt});
         startUpdatedChatTime = new Date();
         const {content: updatedReply_} = await common.chatWithRetry(
@@ -252,6 +265,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     const endTime = new Date();
     const extra = {
         correlationId,
+        info: JSON.stringify(info), // info may have nested arrays which Firestore does not like
         subroutineHistory,
         shortTermContext,
         longTermContext,
