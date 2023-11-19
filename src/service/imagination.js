@@ -11,6 +11,9 @@ const MODEL_PROMPT = (context) =>
     `You are GPT. This is an internal system.`
     + `\nlong-term memory: ${JSON.stringify(context)}`
     + `\nthoughts`;
+const CONTEXT_SCORE = (rand, sim) => {
+    return Math.exp(rand * Math.log(sim));
+};
 const CONTEXT_COUNT = strictParse.int(process.env.IMAGINATION_CONTEXT_COUNT);
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.IMAGINATION_TOKEN_COUNT_LIMIT);
 
@@ -32,8 +35,10 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
                     {correlationId, chatId, summary, imagination});
                 selectedEmbedding = c[common.SUMMARY_EMBEDDING_FIELD] || c[common.IMAGINATION_EMBEDDING_FIELD];
             }
+            const rand = Math.random();
             const targetEmbedding = consolidation[common.SUMMARY_EMBEDDING_FIELD] || consolidation[common.IMAGINATION_EMBEDDING_FIELD];
-            return common.cosineSimilarity(selectedEmbedding, targetEmbedding);
+            const sim = common.cosineSimilarity(selectedEmbedding, targetEmbedding);
+            return CONTEXT_SCORE(rand, sim);
         }, CONTEXT_COUNT);
         if (!rawContext.length) {
             log.log(`imagination: chat ID ${chatId} has yet no long-term memory; do not perform imagination`,
