@@ -41,6 +41,8 @@ Mechanism
 
 5. Subroutine. Can recursively query to itself.
 
+6. External knowledge. Query Wolfram|Alpha.
+
 
 Engineering
 -----------
