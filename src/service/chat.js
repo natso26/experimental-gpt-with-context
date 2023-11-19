@@ -13,8 +13,9 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_SUMMARY_FIELD = 'summary';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_IMAGINATION_FIELD = 'imagination';
-const MODEL_PROMPT = (subroutineResults, longTermContext, shortTermContext, query, subroutineQuery) =>
+const MODEL_PROMPT = (subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery) =>
     `You are GPT. This is an external system.`
+    + `\ninternal subroutine history: ${JSON.stringify(subroutineHistory)}`
     + (!subroutineResults.length ? '' : `\ninternal subroutines: ${JSON.stringify(subroutineResults)}`)
     + `\nlong-term memory: ${JSON.stringify(longTermContext)}`
     + `\nshort-term memory: ${JSON.stringify(shortTermContext)}`
@@ -40,6 +41,7 @@ const MODEL_FUNCTIONS = [
     },
 ];
 const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.CHAT_QUERY_TOKEN_COUNT_LIMIT);
+const SUBROUTINE_HISTORY_COUNT = strictParse.int(process.env.CHAT_SUBROUTINE_HISTORY_COUNT);
 const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_COUNT);
 const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
 const CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY = strictParse.float(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY);
@@ -70,6 +72,15 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     if (queryTokenCount > QUERY_TOKEN_COUNT_LIMIT) {
         throw new Error(`chat query token count exceeds limit of ${QUERY_TOKEN_COUNT_LIMIT}: ${queryTokenCount}`);
     }
+    const rawSubroutineHistory = await memory.getSubroutines(correlationId, chatId, SUBROUTINE_HISTORY_COUNT);
+    const subroutineHistory = rawSubroutineHistory.map(
+        ({
+             [common.QUERY_FIELD]: query,
+             [common.REPLY_FIELD]: reply,
+         }) => ({
+            [MODEL_PROMPT_QUERY_FIELD]: query,
+            [MODEL_PROMPT_REPLY_FIELD]: reply,
+        }));
     const {embedding: queryEmbedding} = await common.embedWithRetry(correlationId, query);
     const rawShortTermContext = await memory.shortTermSearch(correlationId, chatId, (elt, i, timestamp) => {
         const ms = startTime - timestamp;
@@ -118,7 +129,8 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             [MODEL_PROMPT_IMAGINATION_FIELD]: imagination,
         }).reverse();
     log.log('chat long-term context', {correlationId, chatId, longTermContext});
-    const prelimPrompt = MODEL_PROMPT([], longTermContext, shortTermContext, query, subroutineQuery);
+    const prelimPrompt = MODEL_PROMPT(
+        subroutineHistory, [], longTermContext, shortTermContext, query, subroutineQuery);
     log.log('chat prelim prompt', {correlationId, chatId, prelimPrompt});
     const startPrelimChatTime = new Date();
     const {content: prelimReply, functionCalls: rawFunctionCalls} = await common.chatWithRetry(
@@ -211,7 +223,8 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             [MODEL_PROMPT_QUERY_FIELD]: query,
             [MODEL_PROMPT_REPLY_FIELD]: reply,
         }));
-        updatedPrompt = MODEL_PROMPT(subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
+        updatedPrompt = MODEL_PROMPT(
+            subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
         log.log('chat updated prompt', {correlationId, chatId, updatedPrompt});
         startUpdatedChatTime = new Date();
         const {content: updatedReply_} = await common.chatWithRetry(
@@ -228,9 +241,18 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         replyEmbedding = replyEmbedding_;
     }
     const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
+    if (!subroutineQuery) {
+        for (const {query, reply} of functionResults) {
+            await memory.addSubroutine(correlationId, chatId, {
+                [common.QUERY_FIELD]: query,
+                [common.REPLY_FIELD]: reply,
+            }, {correlationId});
+        }
+    }
     const endTime = new Date();
     const extra = {
         correlationId,
+        subroutineHistory,
         shortTermContext,
         longTermContext,
         prelimPrompt,

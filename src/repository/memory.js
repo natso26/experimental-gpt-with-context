@@ -8,6 +8,7 @@ const SCHEDULED_IMAGINATION_FIELD = 'scheduledImagination';
 const ELT_COLLECTION = 'elts';
 const CONSOLIDATION_COLLECTION = (lvl) => `${lvl}-consolidations`;
 const IMAGINATION_COLLECTION = 'imaginations';
+const SUBROUTINE_COLLECTION = 'subroutines';
 const INDEX_FIELD = 'index';
 const TIMESTAMP_FIELD = 'timestamp';
 const IS_INTERNAL_FIELD = 'isInternal';
@@ -28,38 +29,43 @@ const coll = db.collection(TOP_LEVEL_COLLECTION);
 
 const add = wrapper.logCorrelationId('repository.memory.add', async (correlationId, chatId, elt, extra, isInternal) => {
     const eltsColl = coll.doc(chatId).collection(ELT_COLLECTION);
-    const timestamp = new Date();
-    return await db.runTransaction(async (txn) => {
-        const snapshot = await txn.get(
-            eltsColl.select(INDEX_FIELD).orderBy(INDEX_FIELD, 'desc').limit(1));
-        const index = snapshot.empty ? 0 : snapshot.docs[0].data()[INDEX_FIELD] + 1;
-        await txn.set(eltsColl.doc(), {
-            [INDEX_FIELD]: index,
-            [TIMESTAMP_FIELD]: timestamp,
-            [IS_INTERNAL_FIELD]: isInternal,
-            [ELT_FIELD]: elt,
-            [EXTRA_FIELD]: extra,
-        });
-        return {index, timestamp};
+    return await doAdd(eltsColl, {
+        [IS_INTERNAL_FIELD]: isInternal,
+        [ELT_FIELD]: elt,
+        [EXTRA_FIELD]: extra,
     });
 });
 
 const addImagination = wrapper.logCorrelationId('repository.memory.addImagination', async (correlationId, chatId, consolidation, extra) => {
     const imaginationsColl = coll.doc(chatId).collection(IMAGINATION_COLLECTION);
+    return await doAdd(imaginationsColl, {
+        [CONSOLIDATION_FIELD]: consolidation,
+        [EXTRA_FIELD]: extra,
+    });
+});
+
+const addSubroutine = wrapper.logCorrelationId('repository.memory.addSubroutine', async (correlationId, chatId, elt, extra) => {
+    const subroutinesColl = coll.doc(chatId).collection(SUBROUTINE_COLLECTION);
+    return await doAdd(subroutinesColl, {
+        [ELT_FIELD]: elt,
+        [EXTRA_FIELD]: extra,
+    });
+});
+
+const doAdd = async (coll, partialDoc) => {
     const timestamp = new Date();
     return await db.runTransaction(async (txn) => {
         const snapshot = await txn.get(
-            imaginationsColl.select(INDEX_FIELD).orderBy(INDEX_FIELD, 'desc').limit(1));
+            coll.select(INDEX_FIELD).orderBy(INDEX_FIELD, 'desc').limit(1));
         const index = snapshot.empty ? 0 : snapshot.docs[0].data()[INDEX_FIELD] + 1;
-        await txn.set(imaginationsColl.doc(), {
+        await txn.set(coll.doc(), {
             [INDEX_FIELD]: index,
             [TIMESTAMP_FIELD]: timestamp,
-            [CONSOLIDATION_FIELD]: consolidation,
-            [EXTRA_FIELD]: extra,
+            ...partialDoc,
         });
         return {index, timestamp};
     });
-});
+};
 
 const getLatest = wrapper.logCorrelationId('repository.memory.getLatest', async (correlationId, chatId, numResults) => {
     const snapshot = await coll.doc(chatId).collection(ELT_COLLECTION)
@@ -75,6 +81,13 @@ const getHistory = wrapper.logCorrelationId('repository.memory.getHistory', asyn
         .select(INDEX_FIELD, IS_INTERNAL_FIELD, ELT_FIELD)
         .where(IS_INTERNAL_FIELD, '!=', true).orderBy(IS_INTERNAL_FIELD)
         .orderBy(INDEX_FIELD, 'desc').offset(offset).limit(limit).get();
+    const data = snapshot.docs.map(doc => doc.data());
+    return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
+});
+
+const getSubroutines = wrapper.logCorrelationId('repository.memory.getSubroutines', async (correlationId, chatId, numResults) => {
+    const snapshot = await coll.doc(chatId).collection(SUBROUTINE_COLLECTION)
+        .select(INDEX_FIELD, ELT_FIELD).orderBy(INDEX_FIELD, 'desc').limit(numResults).get();
     const data = snapshot.docs.map(doc => doc.data());
     return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
 });
@@ -203,8 +216,10 @@ const imagine = wrapper.logCorrelationId('repository.memory.imagine', async (cor
 export default {
     add,
     addImagination,
+    addSubroutine,
     getLatest,
     getHistory,
+    getSubroutines,
     shortTermSearch,
     longTermSearch,
     consolidate,

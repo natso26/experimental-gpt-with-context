@@ -119,7 +119,7 @@
                 const data = await resp.json();
                 console.log({data});
                 replyBox.value = data.reply;
-                noteArea.innerText = `${Math.round((end - start) / 1000)}s`;
+                noteArea.innerText = `${data.reply.length} chars, ${Math.round((end - start) / 1000)}s`;
             }
         } catch (e) {
             const end = Date.now();

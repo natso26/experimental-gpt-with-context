@@ -7,19 +7,19 @@ Towards artificial consciousness.
 Persistence
 -----------
 
-Externally, a sequence of ``(query, reply)`` pairs. Internally:
+Sequence of ``(query, reply)`` pairs externally. Internally:
 
 .. code-block:: none
 
-    /---
-   v   |
-   (query, reply) <-> introspection
-   ^          ^      /
-   |      /---+------
-   v     v    |
-   summary -> imagination
-   ^   |      ^   |
-    \---       \---
+                   /---
+                  v   |
+   subroutine <-> (query, reply) <-> introspection
+                  ^          ^      /
+                  |      /---+------
+                  v     v    |
+                  summary -> imagination
+                   ^   |      ^   |
+                    \---       \---
 
 
 Mechanism
@@ -39,8 +39,7 @@ Mechanism
 4. Imagination. Thoughts on random selection of related ``summary`` and ``imagination``,
    scheduled in advance after user interaction.
 
-5. Subroutine. Can recursively query to itself;
-   subroutine results are not used in future interactions.
+5. Subroutine. Can recursively query to itself.
 
 
 Engineering
