@@ -75,7 +75,7 @@
 <div>
     <textarea class="text-box" disabled id="reply" rows="16"></textarea>
 </div>
-<div class="footnote" id="note"></div>
+<div class="footnote"><span id="note"></span></div>
 
 <script>
     const chatIdBox = document.getElementById('chat-id');
@@ -94,6 +94,15 @@
         const url = new URL(window.location.href);
         url.searchParams.set('chatId', chatId);
         window.history.pushState({}, '', url);
+    };
+    let debugResp = null;
+    let isdebugRespBeingCopied = false;
+    const onResp = (debug, reply, note) => {
+        console.log(debug);
+        debugResp = debug;
+        replyBox.value = reply;
+        isdebugRespBeingCopied = false;
+        noteArea.innerText = note;
     };
     chatIdBox.value = new URL(window.location.href).searchParams.get('chatId') || uuidv4();
     updateUrl();
@@ -116,20 +125,15 @@
             const end = Date.now();
             if (!resp.ok) {
                 const error = await resp.json();
-                console.log({error});
-                replyBox.value = JSON.stringify(error, null, 2);
-                noteArea.innerText = `${Math.round((end - start) / 1000)}s (failed)`;
+                onResp({error}, JSON.stringify(error, null, 2), `${Math.round((end - start) / 1000)}s (failed)`);
             } else {
                 const data = await resp.json();
-                console.log({data});
-                replyBox.value = data.reply;
-                noteArea.innerText = `${data.reply.length} chars, ${Math.round((end - start) / 1000)}s`;
+                onResp({data}, data.reply, `${data.reply.length} chars, ${Math.round((end - start) / 1000)}s`);
             }
         } catch (e) {
             const end = Date.now();
-            console.log({e});
-            replyBox.value = e.message || 'There was an error fetching the response.';
-            noteArea.innerText = `${Math.round((end - start) / 1000)}s (failed)`;
+            onResp({e: {error: e.message || '', stack: e.stack || ''}},
+                e.message || 'There was an error fetching the response.', `${Math.round((end - start) / 1000)}s (failed)`);
         }
         chatIdBox.disabled = false;
         queryBox.disabled = false;
@@ -138,6 +142,22 @@
     historyButton.addEventListener('click', () => {
         const chatId = chatIdBox.value.trim();
         window.location.href = `/history?chatId=${chatId}`;
+    });
+    noteArea.addEventListener('click', () => {
+        if (isdebugRespBeingCopied) {
+            return;
+        }
+        isdebugRespBeingCopied = true;
+        navigator.clipboard.writeText(JSON.stringify(debugResp, null, 2));
+        const note = noteArea.innerText;
+        noteArea.innerText = '(response copied)';
+        setTimeout(() => {
+            if (!isdebugRespBeingCopied) {
+                return;
+            }
+            noteArea.innerText = note;
+            isdebugRespBeingCopied = false;
+        }, 750);
     });
 </script>
 </body>
