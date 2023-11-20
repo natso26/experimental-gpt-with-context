@@ -43,7 +43,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
         }));
     log.log('introspection context', {correlationId, chatId, context});
     const prompt = MODEL_PROMPT(context);
-    log.log('introspection prompt', {correlationId, chatId, prompt});
+    log.log('introspection prompt', {correlationId, chatId});
     const startChatTime = new Date();
     const {content: introspection} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
     const endChatTime = new Date();

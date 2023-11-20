@@ -60,7 +60,7 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
         });
         log.log(`imagination context for chat ID ${chatId}`, {correlationId, chatId, context});
         const prompt = MODEL_PROMPT(context);
-        log.log('imagination prompt', {correlationId, chatId, prompt});
+        log.log('imagination prompt', {correlationId, chatId});
         const startChatTime = new Date();
         const {content: imagination} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
         const endChatTime = new Date();

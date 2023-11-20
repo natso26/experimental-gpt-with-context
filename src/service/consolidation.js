@@ -38,7 +38,7 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         });
         log.log('consolidation context', {correlationId, chatId, lvl, context});
         const prompt = MODEL_PROMPT(context);
-        log.log('consolidation prompt', {correlationId, chatId, prompt});
+        log.log('consolidation prompt', {correlationId, chatId, lvl});
         const startChatTime = new Date();
         const {content: summary} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
         const endChatTime = new Date();
