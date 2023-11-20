@@ -21,7 +21,8 @@ const MODEL_PROMPT = (info, subroutineHistory, subroutineResults, longTermContex
     + `\nlong-term memory: ${JSON.stringify(longTermContext)}`
     + `\nshort-term memory: ${JSON.stringify(shortTermContext)}`
     + `\nquery: ${JSON.stringify(query)}`
-    + (!subroutineQuery ? '' : `\ninternal subroutine query: ${JSON.stringify(subroutineQuery)}`);
+    // NB: it is better to not duplicate in special case of recursing to same query
+    + ((!subroutineQuery || subroutineQuery === query) ? '' : `\ninternal subroutine query: ${JSON.stringify(subroutineQuery)}`);
 const MODEL_RECURSION_FUNCTION_NAME = 'thoughts';
 const MODEL_RECURSION_FUNCTION_ARG_NAME = 'query';
 const MODEL_FUNCTIONS = [
@@ -144,7 +145,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     log.log('chat long-term context', {correlationId, chatId, longTermContext});
     const prelimPrompt = MODEL_PROMPT(
         info, subroutineHistory, [], longTermContext, shortTermContext, query, subroutineQuery);
-    log.log('chat prelim prompt', {correlationId, chatId, prelimPrompt});
+    log.log('chat prelim prompt', {correlationId, chatId});
     const startPrelimChatTime = new Date();
     const {content: prelimReply, functionCalls: rawFunctionCalls} = await common.chatWithRetry(
         correlationId, prelimPrompt, REPLY_TOKEN_COUNT_LIMIT, MODEL_FUNCTIONS);
@@ -173,19 +174,19 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
                 case MODEL_RECURSION_FUNCTION_NAME:
                     const {query: recursedQuery} = args;
                     if (!recursedQuery) {
-                        log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: query is required`,
+                        log.log(`chat: function call: ${name}: query is required`,
                             {correlationId, chatId, name, args});
                         continue;
                     }
                     if (updatedForbiddenRecursedQueries.includes(recursedQuery)) {
-                        log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: query is forbidden`,
+                        log.log(`chat: function call: ${name}: query is forbidden`,
                             {correlationId, chatId, name, args, recursedQuery, updatedForbiddenRecursedQueries});
                         continue;
                     }
-                    log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: query is allowed`,
+                    log.log(`chat: function call: ${name}: query is allowed`,
                         {correlationId, chatId, name, args, recursedQuery, updatedForbiddenRecursedQueries});
                     const recursedCorrelationId = uuid.v4();
-                    log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: recursed correlation id`,
+                    log.log(`chat: function call: ${name}: recursed correlation id`,
                         {correlationId, chatId, name, recursedQuery, recursedCorrelationId});
                     subtasks.push(async () => {
                         try {
@@ -201,19 +202,18 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
                                 }),
                             }, CHAT_RECURSION_TIMEOUT);
                             if (!res.ok) {
-                                throw new Error(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: api error, status: ${res.status}`);
+                                throw new Error(`chat: function call: ${name}: api error, status: ${res.status}`);
                             }
                             const data = await res.json();
                             const functionResult = {
                                 query: recursedQuery,
                                 ...data,
                             };
-                            log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: result`, {
-                                correlationId, chatId, name, recursedCorrelationId, functionResult,
-                            });
+                            log.log(`chat: function call: ${name}: result`,
+                                {correlationId, chatId, name, recursedQuery, recursedCorrelationId});
                             return functionResult;
                         } catch (e) {
-                            log.log(`chat: function call: ${MODEL_RECURSION_FUNCTION_NAME}: failed`, {
+                            log.log(`chat: function call: ${name}: failed`, {
                                 correlationId, chatId, name, recursedQuery, recursedCorrelationId,
                                 error: e.message || '', stack: e.stack || '',
                             });
@@ -232,19 +232,27 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             log.log('chat: function call: no viable result; no special action needed',
                 {correlationId, chatId});
         }
-        const subroutineResults = functionResults.map(({query, reply}) => ({
-            [MODEL_PROMPT_QUERY_FIELD]: query,
-            [MODEL_PROMPT_REPLY_FIELD]: reply,
-        }));
-        updatedPrompt = MODEL_PROMPT(
-            info, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
-        log.log('chat updated prompt', {correlationId, chatId, updatedPrompt});
-        startUpdatedChatTime = new Date();
-        const {content: updatedReply_} = await common.chatWithRetry(
-            correlationId, updatedPrompt, REPLY_TOKEN_COUNT_LIMIT, []);
-        endUpdatedChatTime = new Date();
-        updatedReply = updatedReply_;
-        updatedPromptTokenCount = await tokenizer.countTokens(correlationId, updatedPrompt);
+        if (!subroutineQuery
+            && functionResults.length === 1 && functionResults[0].query === query
+            && !functionResults[0].info) {
+            log.log('chat: function call: optimize case top level recursing to same query without wolfram alpha result'
+                + ' by passing through reply', {correlationId, chatId, query});
+            updatedReply = functionResults[0].reply;
+        } else {
+            const subroutineResults = functionResults.map(({query, reply}) => ({
+                [MODEL_PROMPT_QUERY_FIELD]: query,
+                [MODEL_PROMPT_REPLY_FIELD]: reply,
+            }));
+            updatedPrompt = MODEL_PROMPT(
+                info, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
+            log.log('chat updated prompt', {correlationId, chatId});
+            startUpdatedChatTime = new Date();
+            const {content: updatedReply_} = await common.chatWithRetry(
+                correlationId, updatedPrompt, REPLY_TOKEN_COUNT_LIMIT, []);
+            endUpdatedChatTime = new Date();
+            updatedReply = updatedReply_;
+            updatedPromptTokenCount = await tokenizer.countTokens(correlationId, updatedPrompt);
+        }
     }
     const prelimPromptTokenCount = await tokenizer.countTokens(correlationId, prelimPrompt);
     const reply = prelimReply || updatedReply;
@@ -265,7 +273,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     const endTime = new Date();
     const extra = {
         correlationId,
-        info: JSON.stringify(info), // info may have nested arrays which Firestore does not like
+        info: !info.length ? '' : JSON.stringify(info), // info may have nested arrays which Firestore does not like
         subroutineHistory,
         shortTermContext,
         longTermContext,
