@@ -49,39 +49,35 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         const extra = {
             correlationId,
             context,
-            prompt,
             tokenCounts: {
                 prompt: promptTokenCount,
                 summary: summaryTokenCount,
             },
             timeStats: {
-                elapsed: endTime - startTime,
-                elapsedChat: endChatTime - startChatTime,
-                startTime,
-                startChatTime,
+                elapsed: (endTime - startTime) / 1000,
+                elapsedChat: (endChatTime - startChatTime) / 1000,
                 endChatTime,
                 endTime,
             },
+        };
+        const dbExtra = {
+            ...extra,
+            prompt,
         };
         return {
             consolidation: {
                 [common.SUMMARY_FIELD]: summary,
                 [common.SUMMARY_EMBEDDING_FIELD]: summaryEmbedding,
-            }, extra,
+            },
+            extra: dbExtra,
+            passOnRet: {
+                summary,
+                ...extra,
+            },
         };
     });
-    const consolidationRes = rawConsolidationRes.map(({lvl, index, timestamp, consolidation, extra}) => {
-        const {
-            [common.SUMMARY_FIELD]: summary,
-        } = consolidation;
-        return {
-            lvl,
-            index,
-            timestamp,
-            summary,
-            ...extra,
-        };
-    });
+    const consolidationRes = rawConsolidationRes.map(
+        ({lvl, index, timestamp, passOnRet}) => ({lvl, index, timestamp, ...passOnRet}));
     return {
         consolidationRes,
     };

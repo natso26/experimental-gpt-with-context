@@ -77,18 +77,20 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
                 imagination: imaginationTokenCount,
             },
             timeStats: {
-                elapsed: endTime - startTime,
-                elapsedChat: endChatTime - startChatTime,
-                startTime,
-                startChatTime,
+                elapsed: (endTime - startTime) / 1000,
+                elapsedChat: (endChatTime - startChatTime) / 1000,
                 endChatTime,
                 endTime,
             },
         };
+        const dbExtra = {
+            ...extra,
+            prompt,
+        };
         const {index, timestamp} = await memory.addImagination(correlationId, chatId, {
             [common.IMAGINATION_FIELD]: imagination,
             [common.IMAGINATION_EMBEDDING_FIELD]: imaginationEmbedding,
-        }, extra);
+        }, dbExtra);
         return {
             index,
             timestamp,

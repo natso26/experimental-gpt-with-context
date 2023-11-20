@@ -56,24 +56,25 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
         inputIndex: index,
         waitTime,
         context,
-        prompt,
         tokenCounts: {
             prompt: promptTokenCount,
             introspection: introspectionTokenCount,
         },
         timeStats: {
-            elapsed: endTime - startTime,
-            elapsedChat: endChatTime - startChatTime,
-            startTime,
-            startChatTime,
+            elapsed: (endTime - startTime) / 1000,
+            elapsedChat: (endChatTime - startChatTime) / 1000,
             endChatTime,
             endTime,
         },
     };
+    const dbExtra = {
+        ...extra,
+        prompt,
+    };
     const {index: introspectionIndex, timestamp} = await memory.add(correlationId, chatId, {
         [common.INTROSPECTION_FIELD]: introspection,
         [common.INTROSPECTION_EMBEDDING_FIELD]: introspectionEmbedding,
-    }, extra, true);
+    }, dbExtra, true);
     return {
         index: introspectionIndex,
         timestamp,
