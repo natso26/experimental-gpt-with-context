@@ -153,7 +153,7 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
                 .map(doc => doc.data()).reverse();
             for (let i = latestLvlIndex + 1; i <= targetLvlIndex; i++) {
                 const raw = prevLvlData.slice(freq * (i - latestLvlIndex - 1), freq * (i - latestLvlIndex - 1) + size);
-                const {consolidation, extra} = await consolidationFn(lvl,
+                const {consolidation, extra, passOnRet} = await consolidationFn(lvl,
                     raw.map(({[lvl ? CONSOLIDATION_FIELD : ELT_FIELD]: v}) => v));
                 const timestamp = new Date();
                 await txn.set(lvlColl.doc(), {
@@ -162,7 +162,7 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
                     [CONSOLIDATION_FIELD]: consolidation,
                     [EXTRA_FIELD]: extra,
                 });
-                ret.push({lvl, index: i, timestamp, consolidation, extra});
+                ret.push({lvl, index: i, timestamp, passOnRet});
             }
         });
         if (txnRes === 'final-level') {

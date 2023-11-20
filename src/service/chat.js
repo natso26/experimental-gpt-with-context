@@ -20,8 +20,8 @@ const MODEL_PROMPT = (info, subroutineHistory, subroutineResults, longTermContex
     + (!subroutineResults.length ? '' : `\ninternal subroutines: ${JSON.stringify(subroutineResults)}`)
     + `\nlong-term memory: ${JSON.stringify(longTermContext)}`
     + `\nshort-term memory: ${JSON.stringify(shortTermContext)}`
-    + `\nuser: ${JSON.stringify(query)}`
-    + (!subroutineQuery ? '' : `\nquery: ${JSON.stringify(subroutineQuery)}`);
+    + `\nquery: ${JSON.stringify(query)}`
+    + (!subroutineQuery ? '' : `\ninternal subroutine query: ${JSON.stringify(subroutineQuery)}`);
 const MODEL_RECURSION_FUNCTION_NAME = 'thoughts';
 const MODEL_RECURSION_FUNCTION_ARG_NAME = 'query';
 const MODEL_FUNCTIONS = [
@@ -269,10 +269,8 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         subroutineHistory,
         shortTermContext,
         longTermContext,
-        prelimPrompt,
         functionCalls,
         functionResults,
-        updatedPrompt,
         tokenCounts: {
             query: queryTokenCount,
             prelimPrompt: prelimPromptTokenCount,
@@ -280,16 +278,12 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             reply: replyTokenCount,
         },
         timeStats: {
-            elapsed: endTime - startTime,
-            elapsedPrelimChat: endPrelimChatTime - startPrelimChatTime,
-            elapsedFunctionCalls: endFunctionCallsTime - startFunctionCallsTime,
-            elapsedUpdatedChat: endUpdatedChatTime - startUpdatedChatTime,
-            startTime,
-            startPrelimChatTime,
+            elapsed: (endTime - startTime) / 1000,
+            elapsedPrelimChat: (endPrelimChatTime - startPrelimChatTime) / 1000,
+            elapsedFunctionCalls: (endFunctionCallsTime - startFunctionCallsTime) / 1000,
+            elapsedUpdatedChat: (endUpdatedChatTime - startUpdatedChatTime) / 1000,
             endPrelimChatTime,
-            startFunctionCallsTime,
             endFunctionCallsTime,
-            startUpdatedChatTime,
             endUpdatedChatTime,
             endTime,
         },
@@ -300,12 +294,17 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
             ...extra,
         };
     }
+    const dbExtra = {
+        ...extra,
+        prelimPrompt,
+        updatedPrompt,
+    };
     const {index, timestamp} = await memory.add(correlationId, chatId, {
         [common.QUERY_FIELD]: query,
         [common.QUERY_EMBEDDING_FIELD]: queryEmbedding,
         [common.REPLY_FIELD]: reply,
         [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
-    }, extra, false);
+    }, dbExtra, false);
     // in background
     fetch_.withTimeout(`${process.env.BACKGROUND_TASK_HOST}/api/consolidate`, {
         method: 'POST',
