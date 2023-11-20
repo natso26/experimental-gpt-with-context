@@ -215,7 +215,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
                         } catch (e) {
                             log.log(`chat: function call: ${name}: failed`, {
                                 correlationId, chatId, name, recursedQuery, recursedCorrelationId,
-                                error: e.message || '', stack: e.stack || ''
+                                error: e.message || '', stack: e.stack || '',
                             });
                             return null;
                         }
