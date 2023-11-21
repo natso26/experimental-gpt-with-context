@@ -8,7 +8,7 @@ import wrapper from '../util/wrapper.js';
 const MODEL_PROMPT_SCORE_FIELD = 'score';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
-    `You are GPT. This is an internal system.`
+    `This is an internal component.`
     + `\nlong-term memory: ${JSON.stringify(context)}`
     + `\nthoughts`;
 const CONTEXT_SCORE = (rand, sim) => {
