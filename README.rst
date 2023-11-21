@@ -11,7 +11,7 @@ Sequence of ``query`` and ``reply`` pairs. Internal flow:
 
 .. code-block:: none
 
-                  external ---\
+                  knowledge --\
                                |
                    /--+        |
                   v   |        v
@@ -43,7 +43,7 @@ Mechanism
 
 5. Subroutine. Can recursively query to itself.
 
-6. External. Query Wolfram|Alpha and Google search engine results pages.
+6. Knowledge. Query Wolfram|Alpha and Google search engine results pages.
 
 
 Engineering
