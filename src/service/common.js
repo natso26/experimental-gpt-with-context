@@ -1,6 +1,7 @@
 import embedding from '../repository/embedding.js';
 import chat from '../repository/chat.js';
 import wolframAlpha from '../repository/wolframAlpha.js';
+import serp from '../repository/serp.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 
@@ -17,6 +18,7 @@ const IMAGINATION_EMBEDDING_FIELD = 'imaginationEmbedding';
 const EMBED_RETRY_COUNT = strictParse.int(process.env.EMBED_REPOSITORY_RETRY_COUNT);
 const CHAT_RETRY_COUNT = strictParse.int(process.env.CHAT_REPOSITORY_RETRY_COUNT);
 const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_REPOSITORY_RETRY_COUNT);
+const SERP_SEARCH_RETRY_COUNT = strictParse.int(process.env.SERP_SEARCH_REPOSITORY_RETRY_COUNT);
 
 const cosineSimilarity = (a, b) => a.map((e, i) => e * b[i]).reduce((x, y) => x + y);
 
@@ -36,24 +38,27 @@ const retry = (fn, onError) => async (...args) => {
 };
 
 const embedWithRetry = retry(embedding.embed, (e, cnt) => {
-    log.log(`embed repository failed, retry count: ${cnt}`, {
-        cnt, error: e.message || '', stack: e.stack || '',
-    });
+    log.log(`embed repository failed, retry count: ${cnt}`,
+        {cnt, error: e.message || '', stack: e.stack || ''});
     return cnt < EMBED_RETRY_COUNT;
 });
 
 const chatWithRetry = retry(chat.chat, (e, cnt) => {
-    log.log(`chat repository failed, retry count: ${cnt}`, {
-        cnt, error: e.message || '', stack: e.stack || '',
-    });
+    log.log(`chat repository failed, retry count: ${cnt}`,
+        {cnt, error: e.message || '', stack: e.stack || ''});
     return cnt < CHAT_RETRY_COUNT;
 });
 
 const wolframAlphaQueryWithRetry = retry(wolframAlpha.query, (e, cnt) => {
-    log.log(`wolfram alpha query repository failed, retry count: ${cnt}`, {
-        cnt, error: e.message || '', stack: e.stack || '',
-    });
+    log.log(`wolfram alpha query repository failed, retry count: ${cnt}`,
+        {cnt, error: e.message || '', stack: e.stack || ''});
     return cnt < WOLFRAM_ALPHA_QUERY_RETRY_COUNT;
+});
+
+const serpSearchWithRetry = retry(serp.search, (e, cnt) => {
+    log.log(`serp search repository failed, retry count: ${cnt}`,
+        {cnt, error: e.message || '', stack: e.stack || ''});
+    return cnt < SERP_SEARCH_RETRY_COUNT;
 });
 
 export default {
@@ -71,4 +76,5 @@ export default {
     embedWithRetry,
     chatWithRetry,
     wolframAlphaQueryWithRetry,
+    serpSearchWithRetry,
 };
