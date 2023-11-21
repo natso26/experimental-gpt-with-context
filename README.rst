@@ -4,22 +4,24 @@ Experimental GPT
 Towards artificial consciousness.
 
 
-Persistence
------------
+Data
+----
 
-Sequence of ``(query, reply)`` pairs externally. Internally:
+Sequence of ``query`` and ``reply`` pairs. Internal flow:
 
 .. code-block:: none
 
-                   /---
-                  v   |
+                  external ---\
+                               |
+                   /--+        |
+                  v   |        v
    subroutine <-> (query, reply) <-> introspection
-                  ^          ^      /
-                  |      /---+------
-                  v     v    |
-                  summary -> imagination
-                   ^   |      ^   |
-                    \---       \---
+                  ^            ^     |
+                  |      /-----+------
+                  v     v       \----+
+                  summary ---------> imagination
+                   ^   |             ^   |
+                    \--+              \--+
 
 
 Mechanism
@@ -41,7 +43,7 @@ Mechanism
 
 5. Subroutine. Can recursively query to itself.
 
-6. External knowledge. Query Wolfram|Alpha.
+6. External. Query Wolfram|Alpha and Google search engine results pages.
 
 
 Engineering

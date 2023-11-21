@@ -10,7 +10,7 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
-    `You are GPT. This is an internal system.`
+    `This is an internal component.`
     + `\n${JSON.stringify(context)}`
     + `\nsummarize`;
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.CONSOLIDATION_TOKEN_COUNT_LIMIT);

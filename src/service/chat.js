@@ -13,9 +13,10 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_SUMMARY_FIELD = 'summary';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_IMAGINATION_FIELD = 'imagination';
-const MODEL_PROMPT = (info, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery) =>
-    `You are GPT. This is an external system.`
-    + (!info.length ? '' : `\ninternal automated system: ${JSON.stringify(info)}`)
+const MODEL_PROMPT = (info, search, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery) =>
+    `This is an external component.`
+    + (!info ? '' : `\ninternal information component: ${info}`)
+    + (!search ? '' : `\ninternal search component: ${search}`)
     + `\ninternal subroutine history: ${JSON.stringify(subroutineHistory)}`
     + (!subroutineResults.length ? '' : `\ninternal subroutines: ${JSON.stringify(subroutineResults)}`)
     + `\nlong-term memory: ${JSON.stringify(longTermContext)}`
@@ -31,18 +32,15 @@ const MODEL_FUNCTIONS = [
         description: '',
         parameters: {
             type: 'object',
-            properties: {
-                [MODEL_RECURSION_FUNCTION_ARG_NAME]: {
-                    type: 'string',
-                },
-            },
-            required: [
-                MODEL_RECURSION_FUNCTION_ARG_NAME,
-            ],
+            properties: {[MODEL_RECURSION_FUNCTION_ARG_NAME]: {type: 'string'}},
+            required: [MODEL_RECURSION_FUNCTION_ARG_NAME],
         },
     },
 ];
 const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.CHAT_QUERY_TOKEN_COUNT_LIMIT);
+const SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.CHAT_SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT);
+const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.CHAT_INFO_TRUNCATION_TOKEN_COUNT);
+const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.CHAT_SEARCH_TRUNCATION_TOKEN_COUNT);
 const SUBROUTINE_HISTORY_COUNT = strictParse.int(process.env.CHAT_SUBROUTINE_HISTORY_COUNT);
 const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_COUNT);
 const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.CHAT_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
@@ -69,23 +67,60 @@ const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.CHAT_MAX_SCH
 const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId, chatId, query, subroutineQuery, forbiddenRecursedQueries) => {
     log.log('chat service parameters', {correlationId, chatId, query, subroutineQuery, forbiddenRecursedQueries});
     const startTime = new Date();
-    const queryTokenCount = await tokenizer.countTokens(correlationId, query);
-    log.log('chat query token count', {correlationId, chatId, queryTokenCount});
-    if (queryTokenCount > QUERY_TOKEN_COUNT_LIMIT) {
-        throw new Error(`chat query token count exceeds limit of ${QUERY_TOKEN_COUNT_LIMIT}: ${queryTokenCount}`);
-    }
-    let info = [];
-    // NB: avoid wolfram alpha at top level; it overly influences GPT
-    if (subroutineQuery) {
-        try {
-            const {pods: info_} = await common.wolframAlphaQueryWithRetry(correlationId, subroutineQuery);
-            info = info_;
-        } catch (e) {
-            log.log('chat wolfram alpha query failed; continue since it is not critical',
-                {correlationId, chatId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
+    let queryTokenCount = 0;
+    let subroutineQueryTokenCount = 0;
+    if (!subroutineQuery) {
+        queryTokenCount = await tokenizer.countTokens(correlationId, query);
+        log.log('chat query token count', {correlationId, chatId, queryTokenCount});
+        if (queryTokenCount > QUERY_TOKEN_COUNT_LIMIT) {
+            throw new Error(`chat query token count exceeds limit of ${QUERY_TOKEN_COUNT_LIMIT}: ${queryTokenCount}`);
+        }
+    } else {
+        // assume query is already ok
+        subroutineQueryTokenCount = await tokenizer.countTokens(correlationId, subroutineQuery);
+        log.log('chat subroutine query token count', {correlationId, chatId, subroutineQueryTokenCount});
+        if (subroutineQueryTokenCount > SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT) {
+            throw new Error(`chat subroutine query token count exceeds limit of ${SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT}: ${subroutineQueryTokenCount}`);
         }
     }
-    log.log('chat info', {correlationId, chatId, info});
+    let info = '';
+    let infoTokenCount = 0;
+    let search = '';
+    let searchTokenCount = 0;
+    // NB: do not do info and search at top level; they overly influence GPT
+    if (subroutineQuery) {
+        const infoTask = async () => {
+            try {
+                const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, subroutineQuery);
+                if (rawInfo.length) {
+                    const {truncated, tokenCount} = await tokenizer.truncate(
+                        correlationId, JSON.stringify(rawInfo), INFO_TRUNCATION_TOKEN_COUNT);
+                    info = truncated;
+                    infoTokenCount = Math.min(tokenCount, INFO_TRUNCATION_TOKEN_COUNT);
+                }
+            } catch (e) {
+                log.log('chat wolfram alpha query failed; continue since it is not critical',
+                    {correlationId, chatId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
+            }
+            log.log('chat info', {correlationId, chatId, info, infoTokenCount});
+        };
+        const searchTask = async () => {
+            try {
+                const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, subroutineQuery);
+                if (rawSearch) {
+                    const {truncated, tokenCount} = await tokenizer.truncate(
+                        correlationId, JSON.stringify(rawSearch), SEARCH_TRUNCATION_TOKEN_COUNT);
+                    search = truncated;
+                    searchTokenCount = Math.min(tokenCount, SEARCH_TRUNCATION_TOKEN_COUNT);
+                }
+            } catch (e) {
+                log.log('chat serp search failed; continue since it is not critical',
+                    {correlationId, chatId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
+            }
+            log.log('chat search', {correlationId, chatId, search, searchTokenCount});
+        };
+        await Promise.all([infoTask(), searchTask()]);
+    }
     const rawSubroutineHistory = await memory.getSubroutines(correlationId, chatId, SUBROUTINE_HISTORY_COUNT);
     const subroutineHistory = rawSubroutineHistory.map(
         ({
@@ -144,7 +179,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         }).reverse();
     log.log('chat long-term context', {correlationId, chatId, longTermContext});
     const prelimPrompt = MODEL_PROMPT(
-        info, subroutineHistory, [], longTermContext, shortTermContext, query, subroutineQuery);
+        info, search, subroutineHistory, [], longTermContext, shortTermContext, query, subroutineQuery);
     log.log('chat prelim prompt', {correlationId, chatId});
     const startPrelimChatTime = new Date();
     const {content: prelimReply, functionCalls: rawFunctionCalls} = await common.chatWithRetry(
@@ -234,8 +269,8 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         }
         if (!subroutineQuery
             && functionResults.length === 1 && functionResults[0].query === query
-            && !functionResults[0].info) {
-            log.log('chat: function call: optimize case top level recursing to same query without wolfram alpha result'
+            && !functionResults[0].info && !functionResults[0].search) {
+            log.log('chat: function call: optimize case top level recursing to same query without more data'
                 + ' by passing through reply', {correlationId, chatId, query});
             updatedReply = functionResults[0].reply;
         } else {
@@ -244,7 +279,7 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
                 [MODEL_PROMPT_REPLY_FIELD]: reply,
             }));
             updatedPrompt = MODEL_PROMPT(
-                info, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
+                info, search, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
             log.log('chat updated prompt', {correlationId, chatId});
             startUpdatedChatTime = new Date();
             const {content: updatedReply_} = await common.chatWithRetry(
@@ -273,7 +308,8 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
     const endTime = new Date();
     const extra = {
         correlationId,
-        info: !info.length ? '' : JSON.stringify(info), // info may have nested arrays which Firestore does not like
+        info,
+        search,
         subroutineHistory,
         shortTermContext,
         longTermContext,
@@ -281,6 +317,9 @@ const chat = wrapper.logCorrelationId('service.chat.chat', async (correlationId,
         functionResults,
         tokenCounts: {
             query: queryTokenCount,
+            subroutineQuery: subroutineQueryTokenCount,
+            info: infoTokenCount,
+            search: searchTokenCount,
             prelimPrompt: prelimPromptTokenCount,
             updatedPrompt: updatedPromptTokenCount,
             reply: replyTokenCount,
