@@ -15,7 +15,7 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
             function: f,
         })),
     };
-    const res = await fetch_.withTimeout(URL, {
+    const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -39,10 +39,10 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
             presence_penalty: 0,
         }),
     }, TIMEOUT);
-    if (!res.ok) {
-        throw new Error(`chat completions api error, status: ${res.status}`);
+    if (!resp.ok) {
+        throw new Error(`chat completions api error, status: ${resp.status}`);
     }
-    const data = await res.json();
+    const data = await resp.json();
     const {content: content_, tool_calls} = data.choices[0].message;
     if (content_) {
         return {

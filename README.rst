@@ -1,7 +1,7 @@
-Experimental GPT
-================
+Intelligentia Experimentalis
+============================
 
-Towards artificial consciousness.
+GPT in the machine.
 
 
 Data
@@ -50,6 +50,6 @@ Engineering
 -----------
 
 - Google Cloud Run, Firestore.
-- Consolidation, Introspection by separate HTTP requests to keep Cloud Run awake.
+- Consolidation, Introspection by HTTP requests to keep Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
-- Frontend of chat and history pages; static HTML, vanilla JS.
+- Frontend of query and history pages; VanillaJS.

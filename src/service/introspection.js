@@ -4,29 +4,30 @@ import common from './common.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
+import time from '../util/time.js';
 
 const MODEL_PROMPT_QUERY_FIELD = 'query';
 const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT = (context) =>
-    `This is an internal component.`
-    + `\nshort-term memory: ${JSON.stringify(context)}`
+    common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
+    + `\ncontext: ${JSON.stringify(context)}`
     + `\nthoughts`;
 const MIN_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MIN_WAIT_TIME_SECS) * 1000;
 const MAX_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MAX_WAIT_TIME_SECS) * 1000;
 const CONTEXT_COUNT = strictParse.int(process.env.INTROSPECTION_CONTEXT_COUNT);
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.INTROSPECTION_TOKEN_COUNT_LIMIT);
 
-const introspect = wrapper.logCorrelationId('service.introspection.introspect', async (correlationId, chatId, index) => {
-    log.log('introspection service parameters', {correlationId, chatId, index});
+const introspect = wrapper.logCorrelationId('service.introspection.introspect', async (correlationId, sessionId, index) => {
+    log.log('introspect: parameters', {correlationId, sessionId, index});
     const waitTime = Math.exp(Math.log(MIN_WAIT_TIME)
         + Math.random() * (Math.log(MAX_WAIT_TIME) - Math.log(MIN_WAIT_TIME)));
-    log.log('introspection wait time', {correlationId, chatId, waitTime});
+    log.log('introspect: wait time', {correlationId, sessionId, waitTime});
     await new Promise(resolve => setTimeout(resolve, waitTime));
-    const startTime = new Date();
+    const start = new Date();
     // NB: since introspection can interleave with (query, reply) at at most 1:1, we double the search range
-    const {elts: rawContext, latestIndex} = await memory.getLatest(correlationId, chatId, 2 * CONTEXT_COUNT);
+    const {elts: rawContext, latestIndex} = await memory.getLatest(correlationId, sessionId, 2 * CONTEXT_COUNT);
     if (latestIndex !== index) {
-        log.log(`introspection: index outdated; do nothing: ${index} < ${latestIndex}`,
+        log.log(`introspect: index outdated; do nothing: ${index} < ${latestIndex}`,
             {correlationId, index, latestIndex});
         return {
             introspection: null,
@@ -41,16 +42,16 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
             [MODEL_PROMPT_QUERY_FIELD]: query,
             [MODEL_PROMPT_REPLY_FIELD]: reply,
         }));
-    log.log('introspection context', {correlationId, chatId, context});
+    log.log('introspect: context', {correlationId, sessionId, context});
     const prompt = MODEL_PROMPT(context);
-    log.log('introspection prompt', {correlationId, chatId});
-    const startChatTime = new Date();
+    log.log('introspect: prompt', {correlationId, sessionId, prompt});
+    const startChat = new Date();
     const {content: introspection} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
-    const endChatTime = new Date();
+    const elapsedChat = time.elapsedSecs(startChat);
     const {embedding: introspectionEmbedding} = await common.embedWithRetry(correlationId, introspection);
     const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
     const introspectionTokenCount = await tokenizer.countTokens(correlationId, introspection);
-    const endTime = new Date();
+    const elapsed = time.elapsedSecs(start);
     const extra = {
         correlationId,
         inputIndex: index,
@@ -61,17 +62,15 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
             introspection: introspectionTokenCount,
         },
         timeStats: {
-            elapsed: (endTime - startTime) / 1000,
-            elapsedChat: (endChatTime - startChatTime) / 1000,
-            endChatTime,
-            endTime,
+            elapsed,
+            elapsedChat,
         },
     };
     const dbExtra = {
         ...extra,
         prompt,
     };
-    const {index: introspectionIndex, timestamp} = await memory.add(correlationId, chatId, {
+    const {index: introspectionIndex, timestamp} = await memory.add(correlationId, sessionId, {
         [common.INTROSPECTION_FIELD]: introspection,
         [common.INTROSPECTION_EMBEDDING_FIELD]: introspectionEmbedding,
     }, dbExtra, true);

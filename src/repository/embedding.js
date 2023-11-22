@@ -7,7 +7,7 @@ const MODEL = 'text-embedding-ada-002';
 const TIMEOUT = strictParse.int(process.env.EMBEDDINGS_API_TIMEOUT_SECS) * 1000;
 
 const embed = wrapper.logCorrelationId('repository.embedding.embed', async (correlationId, text) => {
-    const res = await fetch_.withTimeout(URL, {
+    const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -18,10 +18,10 @@ const embed = wrapper.logCorrelationId('repository.embedding.embed', async (corr
             input: text,
         }),
     }, TIMEOUT);
-    if (!res.ok) {
-        throw new Error(`embeddings api error, status: ${res.status}`);
+    if (!resp.ok) {
+        throw new Error(`embeddings api error, status: ${resp.status}`);
     }
-    const data = await res.json();
+    const data = await resp.json();
     const {embedding} = data.data[0];
     return {
         embedding,

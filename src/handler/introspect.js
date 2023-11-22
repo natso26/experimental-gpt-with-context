@@ -3,12 +3,12 @@ import common from './common.js';
 import wrapper from '../util/wrapper.js';
 
 const introspect = wrapper.logCorrelationId('handler.introspect.introspect', async (correlationId, body) => {
-    const {chatId, index} = body;
-    if (!common.isNonEmptyString(chatId)
+    const {sessionId, index} = body;
+    if (!common.isNonEmptyString(sessionId)
         || !(common.isInteger(index) && index >= 0)) {
-        throw new Error('field `chatId` or `index` is invalid');
+        throw new Error('field `sessionId` or `index` is invalid');
     }
-    return await introspection.introspect(correlationId, chatId, index);
+    return await introspection.introspect(correlationId, sessionId, index);
 });
 
 export default {
