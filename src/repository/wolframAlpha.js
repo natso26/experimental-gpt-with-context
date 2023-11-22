@@ -1,3 +1,4 @@
+import common_ from '../common.js';
 import fetch_ from '../util/fetch.js';
 import strictParse from '../util/strictParse.js';
 import wrapper from '../util/wrapper.js';
@@ -7,7 +8,7 @@ const TIMEOUT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_API_TIMEOUT_SECS
 
 const query = wrapper.logCorrelationId('repository.wolframAlpha.query', async (correlationId, query) => {
     const resp = await fetch_.withTimeout(`${URL}?${new URLSearchParams({
-        appid: process.env.WOLFRAM_ALPHA_APP_ID,
+        appid: common_.SECRETS.WOLFRAM_ALPHA_APP_ID,
         input: query,
         output: 'JSON',
     })}`, {}, TIMEOUT);

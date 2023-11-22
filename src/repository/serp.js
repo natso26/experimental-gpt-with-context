@@ -1,3 +1,4 @@
+import common_ from '../common.js';
 import fetch_ from '../util/fetch.js';
 import strictParse from '../util/strictParse.js';
 import wrapper from '../util/wrapper.js';
@@ -7,7 +8,7 @@ const TIMEOUT = strictParse.int(process.env.SERPAPI_SEARCH_API_TIMEOUT_SECS) * 1
 
 const search = wrapper.logCorrelationId('repository.serp.search', async (correlationId, query) => {
     const resp = await fetch_.withTimeout(`${URL}?${new URLSearchParams({
-        api_key: process.env.SERPAPI_API_KEY,
+        api_key: common_.SECRETS.SERPAPI_API_KEY,
         engine: 'google',
         q: query,
     })}`, {}, TIMEOUT);

@@ -2,15 +2,16 @@ import introspection from '../service/introspection.js';
 import common from './common.js';
 import wrapper from '../util/wrapper.js';
 
-const introspect = wrapper.logCorrelationId('handler.introspect.introspect', async (correlationId, body) => {
-    const {sessionId, index} = body;
-    if (!common.isNonEmptyString(sessionId)
+const internalIntrospect = wrapper.logCorrelationId('handler.introspect.internalIntrospect', async (correlationId, body) => {
+    const {userId, sessionId, index} = body;
+    if (!common.isUuidV4(userId)
+        || !common.isUuidV4(sessionId)
         || !(common.isInteger(index) && index >= 0)) {
-        throw new Error('field `sessionId` or `index` is invalid');
+        throw new Error('some fields are invalid');
     }
-    return await introspection.introspect(correlationId, sessionId, index);
+    return await introspection.introspect(correlationId, userId, sessionId, index);
 });
 
 export default {
-    introspect,
+    internalIntrospect,
 };
