@@ -6,15 +6,15 @@ const URL = 'https://api.wolframalpha.com/v2/query';
 const TIMEOUT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_API_TIMEOUT_SECS) * 1000;
 
 const query = wrapper.logCorrelationId('repository.wolframAlpha.query', async (correlationId, query) => {
-    const res = await fetch_.withTimeout(`${URL}?${new URLSearchParams({
+    const resp = await fetch_.withTimeout(`${URL}?${new URLSearchParams({
         appid: process.env.WOLFRAM_ALPHA_APP_ID,
         input: query,
         output: 'JSON',
     })}`, {}, TIMEOUT);
-    if (!res.ok) {
-        throw new Error(`wolfram alpha query api error, status: ${res.status}`);
+    if (!resp.ok) {
+        throw new Error(`wolfram alpha query api error, status: ${resp.status}`);
     }
-    const data = await res.json();
+    const data = await resp.json();
     const {pods: rawPods} = data.queryresult;
     const pods = rawPods || [];
     return {

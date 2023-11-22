@@ -4,21 +4,22 @@ import common from './common.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
+import time from '../util/time.js';
 
 const MODEL_PROMPT_QUERY_FIELD = 'query';
 const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
-    `This is an internal component.`
-    + `\n${JSON.stringify(context)}`
+    common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
+    + `\ncontext: ${JSON.stringify(context)}`
     + `\nsummarize`;
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.CONSOLIDATION_TOKEN_COUNT_LIMIT);
 
-const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate', async (correlationId, chatId) => {
-    log.log('consolidation service parameters', {correlationId, chatId});
-    const rawConsolidationRes = await memory.consolidate(correlationId, chatId, async (lvl, raw) => {
-        const startTime = new Date();
+const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate', async (correlationId, sessionId) => {
+    log.log('consolidate: parameters', {correlationId, sessionId});
+    const rawConsolidationRes = await memory.consolidate(correlationId, sessionId, async (lvl, raw) => {
+        const start = new Date();
         // NB: strangely, in order of effectiveness: {text: summary} > summary > {summary}
         const context = lvl ? raw.map((
             {
@@ -36,16 +37,16 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         } : {
             [MODEL_PROMPT_INTROSPECTION_FIELD]: introspection,
         });
-        log.log('consolidation context', {correlationId, chatId, lvl, context});
+        log.log('consolidate: context', {correlationId, sessionId, lvl, context});
         const prompt = MODEL_PROMPT(context);
-        log.log('consolidation prompt', {correlationId, chatId, lvl});
-        const startChatTime = new Date();
+        log.log('consolidate: prompt', {correlationId, sessionId, lvl, prompt});
+        const startChat = new Date();
         const {content: summary} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
-        const endChatTime = new Date();
+        const elapsedChat = time.elapsedSecs(startChat);
         const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
         const summaryTokenCount = await tokenizer.countTokens(correlationId, summary);
-        const endTime = new Date();
+        const elapsed = time.elapsedSecs(start);
         const extra = {
             correlationId,
             context,
@@ -54,10 +55,8 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
                 summary: summaryTokenCount,
             },
             timeStats: {
-                elapsed: (endTime - startTime) / 1000,
-                elapsedChat: (endChatTime - startChatTime) / 1000,
-                endChatTime,
-                endTime,
+                elapsed,
+                elapsedChat,
             },
         };
         const dbExtra = {

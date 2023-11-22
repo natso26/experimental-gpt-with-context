@@ -13,7 +13,8 @@ const countTokens = wrapper.logCorrelationId('repository.tokenizer.countTokens',
 const truncate = wrapper.logCorrelationId('repository.tokenizer.truncate', async (correlationId, text, maxTokens) => {
     const tokens = enc.encode(text);
     const tokenCount = tokens.length;
-    const truncated = enc.decode(tokens.slice(0, maxTokens));
+    const truncated = tokenCount <= maxTokens
+        ? text : enc.decode(tokens.slice(0, maxTokens));
     return {
         truncated,
         tokenCount,

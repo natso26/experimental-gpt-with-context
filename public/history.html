@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Experimental GPT - History</title>
+    <title>Intelligentia Experimentalis – History</title>
     <style>
         html {
             -webkit-text-size-adjust: 100%;
@@ -70,9 +70,9 @@
     </style>
 </head>
 <body>
-<label for="chat-id">Chat ID</label>
+<label for="session-id">Session ID</label>
 <div>
-    <textarea class="text-box" id="chat-id" rows="1"></textarea>
+    <textarea class="text-box" id="session-id" rows="1"></textarea>
 </div>
 <div class="buttons-panel">
     <div>
@@ -82,7 +82,7 @@
         <input class="number-input" id="limit" min="1" step="1" type="number">
         <button class="button" id="submit">Submit</button>
     </div>
-    <button class="button button-recolor" id="chat">Chat</button>
+    <button class="button button-recolor" id="to-query">Query</button>
 </div>
 <br><br>
 <label for="history">History</label>
@@ -91,34 +91,34 @@
 </div>
 
 <script>
-    const chatIdBox = document.getElementById('chat-id');
+    const sessionIdBox = document.getElementById('session-id');
     const offsetInput = document.getElementById('offset');
     const limitInput = document.getElementById('limit');
     const submitButton = document.getElementById('submit');
-    const chatButton = document.getElementById('chat');
+    const toQueryButton = document.getElementById('to-query');
     const historyBox = document.getElementById('history');
     const updateUrl = () => {
-        const chatId = chatIdBox.value.trim();
+        const sessionId = sessionIdBox.value.trim();
         const offset = offsetInput.value.trim();
         const limit = limitInput.value.trim();
         const url = new URL(window.location.href);
-        url.searchParams.set('chatId', chatId);
+        url.searchParams.set('sessionId', sessionId);
         url.searchParams.set('offset', offset);
         url.searchParams.set('limit', limit);
         window.history.pushState({}, '', url);
     };
-    chatIdBox.value = new URL(window.location.href).searchParams.get('chatId') || '';
+    sessionIdBox.value = new URL(window.location.href).searchParams.get('sessionId') || '';
     offsetInput.value = new URL(window.location.href).searchParams.get('offset') || '0';
     limitInput.value = new URL(window.location.href).searchParams.get('limit') || '25';
     updateUrl();
-    chatIdBox.addEventListener('change', updateUrl);
+    sessionIdBox.addEventListener('change', updateUrl);
     offsetInput.addEventListener('change', updateUrl);
     limitInput.addEventListener('change', updateUrl);
     submitButton.addEventListener('click', async () => {
-        const chatId = chatIdBox.value.trim();
+        const sessionId = sessionIdBox.value.trim();
         const offset = parseInt(offsetInput.value.trim());
         const limit = parseInt(limitInput.value.trim());
-        chatIdBox.disabled = true;
+        sessionIdBox.disabled = true;
         offsetInput.disabled = true;
         limitInput.disabled = true;
         submitButton.disabled = true;
@@ -129,7 +129,7 @@
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    chatId, offset, limit,
+                    sessionId, offset, limit,
                 }),
             });
             if (!resp.ok) {
@@ -149,14 +149,14 @@
             console.log({e});
             historyBox.value = e.message || 'There was an error fetching the response.';
         }
-        chatIdBox.disabled = false;
+        sessionIdBox.disabled = false;
         offsetInput.disabled = false;
         limitInput.disabled = false;
         submitButton.disabled = false;
     });
-    chatButton.addEventListener('click', () => {
-        const chatId = chatIdBox.value.trim();
-        window.location.href = `/?chatId=${chatId}`;
+    toQueryButton.addEventListener('click', () => {
+        const sessionId = sessionIdBox.value.trim();
+        window.location.href = `/?sessionId=${sessionId}`;
     });
 </script>
 </body>

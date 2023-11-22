@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Experimental GPT</title>
+    <title>Intelligentia Experimentalis</title>
     <style>
         html {
             -webkit-text-size-adjust: 100%;
@@ -57,9 +57,9 @@
     </style>
 </head>
 <body>
-<label for="chat-id">Chat ID</label>
+<label for="session-id">Session ID</label>
 <div>
-    <textarea class="text-box" id="chat-id" rows="1"></textarea>
+    <textarea class="text-box" id="session-id" rows="1"></textarea>
 </div>
 <br>
 <label for="query">Query</label>
@@ -68,7 +68,7 @@
 </div>
 <div class="buttons-panel">
     <button class="button" id="submit">Submit</button>
-    <button class="button button-recolor" id="history">History</button>
+    <button class="button button-recolor" id="to-history">History</button>
 </div>
 <br><br>
 <label for="reply">Reply</label>
@@ -78,10 +78,10 @@
 <div class="footnote"><span id="note"></span></div>
 
 <script>
-    const chatIdBox = document.getElementById('chat-id');
+    const sessionIdBox = document.getElementById('session-id');
     const queryBox = document.getElementById('query');
     const submitButton = document.getElementById('submit');
-    const historyButton = document.getElementById('history');
+    const toHistoryButton = document.getElementById('to-history');
     const replyBox = document.getElementById('reply');
     const noteArea = document.getElementById('note');
     const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -90,9 +90,9 @@
         return v.toString(16);
     });
     const updateUrl = () => {
-        const chatId = chatIdBox.value.trim();
+        const sessionId = sessionIdBox.value.trim();
         const url = new URL(window.location.href);
-        url.searchParams.set('chatId', chatId);
+        url.searchParams.set('sessionId', sessionId);
         window.history.pushState({}, '', url);
     };
     let debugResp = null;
@@ -104,23 +104,23 @@
         isdebugRespBeingCopied = false;
         noteArea.innerText = note;
     };
-    chatIdBox.value = new URL(window.location.href).searchParams.get('chatId') || uuidv4();
+    sessionIdBox.value = new URL(window.location.href).searchParams.get('sessionId') || uuidv4();
     updateUrl();
-    chatIdBox.addEventListener('change', updateUrl);
+    sessionIdBox.addEventListener('change', updateUrl);
     submitButton.addEventListener('click', async () => {
-        const chatId = chatIdBox.value.trim();
+        const sessionId = sessionIdBox.value.trim();
         const query = queryBox.value;
-        chatIdBox.disabled = true;
+        sessionIdBox.disabled = true;
         queryBox.disabled = true;
         submitButton.disabled = true;
         const start = Date.now();
         try {
-            const resp = await fetch('/api/chat', {
+            const resp = await fetch('/api/query', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({chatId, query}),
+                body: JSON.stringify({sessionId, query}),
             });
             const end = Date.now();
             if (!resp.ok) {
@@ -135,13 +135,13 @@
             onResp({e: {error: e.message || '', stack: e.stack || ''}},
                 e.message || 'There was an error fetching the response.', `${Math.round((end - start) / 1000)}s (failed)`);
         }
-        chatIdBox.disabled = false;
+        sessionIdBox.disabled = false;
         queryBox.disabled = false;
         submitButton.disabled = false;
     });
-    historyButton.addEventListener('click', () => {
-        const chatId = chatIdBox.value.trim();
-        window.location.href = `/history?chatId=${chatId}`;
+    toHistoryButton.addEventListener('click', () => {
+        const sessionId = sessionIdBox.value.trim();
+        window.location.href = `/history?sessionId=${sessionId}`;
     });
     noteArea.addEventListener('click', () => {
         if (isdebugRespBeingCopied) {

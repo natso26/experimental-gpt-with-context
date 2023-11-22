@@ -15,6 +15,9 @@ const INTROSPECTION_FIELD = 'introspection';
 const INTROSPECTION_EMBEDDING_FIELD = 'introspectionEmbedding';
 const IMAGINATION_FIELD = 'imagination';
 const IMAGINATION_EMBEDDING_FIELD = 'imaginationEmbedding';
+const MODEL_PROMPT_EXTERNAL_COMPONENT_MSG = 'This is an external component.';
+const MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG = 'This is an intermediate component.';
+const MODEL_PROMPT_INTERNAL_COMPONENT_MSG = 'This is an internal component.';
 const EMBED_RETRY_COUNT = strictParse.int(process.env.EMBED_REPOSITORY_RETRY_COUNT);
 const CHAT_RETRY_COUNT = strictParse.int(process.env.CHAT_REPOSITORY_RETRY_COUNT);
 const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_REPOSITORY_RETRY_COUNT);
@@ -72,6 +75,9 @@ export default {
     INTROSPECTION_EMBEDDING_FIELD,
     IMAGINATION_FIELD,
     IMAGINATION_EMBEDDING_FIELD,
+    MODEL_PROMPT_EXTERNAL_COMPONENT_MSG,
+    MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG,
+    MODEL_PROMPT_INTERNAL_COMPONENT_MSG,
     cosineSimilarity,
     embedWithRetry,
     chatWithRetry,

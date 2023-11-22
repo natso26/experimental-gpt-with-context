@@ -3,11 +3,11 @@ import common from './common.js';
 import wrapper from '../util/wrapper.js';
 
 const consolidate = wrapper.logCorrelationId('handler.consolidate.consolidate', async (correlationId, body) => {
-    const {chatId} = body;
-    if (!common.isNonEmptyString(chatId)) {
-        throw new Error('field `chatId` is invalid');
+    const {sessionId} = body;
+    if (!common.isNonEmptyString(sessionId)) {
+        throw new Error('field `sessionId` is invalid');
     }
-    return await consolidation.consolidate(correlationId, chatId);
+    return await consolidation.consolidate(correlationId, sessionId);
 });
 
 export default {
