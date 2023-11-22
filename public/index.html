@@ -38,6 +38,7 @@
             width: calc(84% + 22px);
             justify-content: space-between;
             align-items: center;
+            margin: 4px 0 0 0;
         }
 
         .button {
@@ -47,12 +48,15 @@
             border: none;
             border-radius: 16px;
             padding: 8px;
-            margin: 4px 0 0 0;
             background-color: aliceblue;
         }
 
         .button-recolor {
             background-color: orange;
+        }
+
+        .button-shaped-link {
+            border-radius: 16px;
         }
     </style>
 </head>
@@ -68,7 +72,9 @@
 </div>
 <div class="buttons-panel">
     <button class="button" id="submit">Submit</button>
-    <button class="button button-recolor" id="to-history">History</button>
+    <a class="button-shaped-link" href="/history" id="to-history">
+        <button class="button button-recolor">History</button>
+    </a>
 </div>
 <br><br>
 <label for="reply">Reply</label>
@@ -81,7 +87,7 @@
     const sessionIdBox = document.getElementById('session-id');
     const queryBox = document.getElementById('query');
     const submitButton = document.getElementById('submit');
-    const toHistoryButton = document.getElementById('to-history');
+    const toHistoryLink = document.getElementById('to-history');
     const replyBox = document.getElementById('reply');
     const noteArea = document.getElementById('note');
     const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -89,10 +95,12 @@
         const v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
     });
-    const updateUrl = () => {
+    const updateUrls = () => {
         const sessionId = sessionIdBox.value.trim();
+        toHistoryLink.href = `/history?userId=${userId}&sessionId=${sessionId}`;
         const url = new URL(window.location.href);
-        url.searchParams.set('sessionId', sessionId);
+        const p = url.searchParams;
+        p.set('sessionId', sessionId);
         window.history.pushState({}, '', url);
     };
     let debugResp = null;
@@ -104,9 +112,11 @@
         isdebugRespBeingCopied = false;
         noteArea.innerText = note;
     };
-    sessionIdBox.value = new URL(window.location.href).searchParams.get('sessionId') || uuidv4();
-    updateUrl();
-    sessionIdBox.addEventListener('change', updateUrl);
+    const p = new URL(window.location.href).searchParams;
+    const userId = p.get('userId') || '';
+    sessionIdBox.value = p.get('sessionId') || uuidv4();
+    updateUrls();
+    sessionIdBox.addEventListener('change', updateUrls);
     submitButton.addEventListener('click', async () => {
         const sessionId = sessionIdBox.value.trim();
         const query = queryBox.value;
@@ -120,7 +130,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({sessionId, query}),
+                body: JSON.stringify({userId, sessionId, query}),
             });
             const end = Date.now();
             if (!resp.ok) {
@@ -138,10 +148,6 @@
         sessionIdBox.disabled = false;
         queryBox.disabled = false;
         submitButton.disabled = false;
-    });
-    toHistoryButton.addEventListener('click', () => {
-        const sessionId = sessionIdBox.value.trim();
-        window.location.href = `/history?sessionId=${sessionId}`;
     });
     noteArea.addEventListener('click', () => {
         if (isdebugRespBeingCopied) {

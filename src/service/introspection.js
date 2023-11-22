@@ -17,15 +17,16 @@ const MAX_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MAX_WAIT_TIME_SE
 const CONTEXT_COUNT = strictParse.int(process.env.INTROSPECTION_CONTEXT_COUNT);
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.INTROSPECTION_TOKEN_COUNT_LIMIT);
 
-const introspect = wrapper.logCorrelationId('service.introspection.introspect', async (correlationId, sessionId, index) => {
-    log.log('introspect: parameters', {correlationId, sessionId, index});
+const introspect = wrapper.logCorrelationId('service.introspection.introspect', async (correlationId, userId, sessionId, index) => {
+    log.log('introspect: parameters', {correlationId, userId, sessionId, index});
+    const docId = common.DOC_ID.from(userId, sessionId);
     const waitTime = Math.exp(Math.log(MIN_WAIT_TIME)
         + Math.random() * (Math.log(MAX_WAIT_TIME) - Math.log(MIN_WAIT_TIME)));
-    log.log('introspect: wait time', {correlationId, sessionId, waitTime});
+    log.log('introspect: wait time', {correlationId, docId, waitTime});
     await new Promise(resolve => setTimeout(resolve, waitTime));
     const start = new Date();
     // NB: since introspection can interleave with (query, reply) at at most 1:1, we double the search range
-    const {elts: rawContext, latestIndex} = await memory.getLatest(correlationId, sessionId, 2 * CONTEXT_COUNT);
+    const {elts: rawContext, latestIndex} = await memory.getLatest(correlationId, docId, 2 * CONTEXT_COUNT);
     if (latestIndex !== index) {
         log.log(`introspect: index outdated; do nothing: ${index} < ${latestIndex}`,
             {correlationId, index, latestIndex});
@@ -42,9 +43,9 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
             [MODEL_PROMPT_QUERY_FIELD]: query,
             [MODEL_PROMPT_REPLY_FIELD]: reply,
         }));
-    log.log('introspect: context', {correlationId, sessionId, context});
+    log.log('introspect: context', {correlationId, docId, context});
     const prompt = MODEL_PROMPT(context);
-    log.log('introspect: prompt', {correlationId, sessionId, prompt});
+    log.log('introspect: prompt', {correlationId, docId, prompt});
     const startChat = new Date();
     const {content: introspection} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
     const elapsedChat = time.elapsedSecs(startChat);
@@ -70,7 +71,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
         ...extra,
         prompt,
     };
-    const {index: introspectionIndex, timestamp} = await memory.add(correlationId, sessionId, {
+    const {index: introspectionIndex, timestamp} = await memory.add(correlationId, docId, {
         [common.INTROSPECTION_FIELD]: introspection,
         [common.INTROSPECTION_EMBEDDING_FIELD]: introspectionEmbedding,
     }, dbExtra, true);

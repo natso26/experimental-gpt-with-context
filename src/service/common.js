@@ -5,6 +5,13 @@ import serp from '../repository/serp.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 
+const DOC_ID = {
+    from: (userId, sessionId) => `${userId}_${sessionId}`,
+    parse: (docId) => {
+        const [userId, sessionId] = docId.split('_');
+        return {userId, sessionId};
+    },
+};
 const QUERY_FIELD = 'query';
 const QUERY_EMBEDDING_FIELD = 'queryEmbedding';
 const REPLY_FIELD = 'reply';
@@ -65,6 +72,7 @@ const serpSearchWithRetry = retry(serp.search, (e, cnt) => {
 });
 
 export default {
+    DOC_ID,
     QUERY_FIELD,
     QUERY_EMBEDDING_FIELD,
     REPLY_FIELD,

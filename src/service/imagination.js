@@ -20,11 +20,11 @@ const TOKEN_COUNT_LIMIT = strictParse.int(process.env.IMAGINATION_TOKEN_COUNT_LI
 
 const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (correlationId) => {
     log.log('imagine: parameters', {correlationId});
-    const imagineRes = await memory.imagine(correlationId, new Date(), async (sessionId) => {
-        log.log(`imagine: imagine for session ID ${sessionId}`, {correlationId, sessionId});
+    const imagineRes = await memory.imagine(correlationId, new Date(), async (docId) => {
+        log.log(`imagine: imagine for doc ID ${docId}`, {correlationId, docId});
         const start = new Date();
         let selectedEmbedding;
-        const rawContext = await memory.longTermSearch(correlationId, sessionId, (getConsolidations, consolidation) => {
+        const rawContext = await memory.longTermSearch(correlationId, docId, (getConsolidations, consolidation) => {
             if (!selectedEmbedding) {
                 const cs = getConsolidations();
                 const c = cs[Math.floor(Math.random() * cs.length)];
@@ -32,8 +32,8 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
                     [common.SUMMARY_FIELD]: summary,
                     [common.IMAGINATION_FIELD]: imagination,
                 } = c;
-                log.log(`imagine: selected reference item for session ID ${sessionId}`,
-                    {correlationId, sessionId, summary, imagination});
+                log.log(`imagine: selected reference item for doc ID ${docId}`,
+                    {correlationId, docId, summary, imagination});
                 selectedEmbedding = c[common.SUMMARY_EMBEDDING_FIELD] || c[common.IMAGINATION_EMBEDDING_FIELD];
             }
             const rand = Math.random();
@@ -42,8 +42,8 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
             return CONTEXT_SCORE(rand, sim);
         }, CONTEXT_COUNT);
         if (!rawContext.length) {
-            log.log(`imagine: session ID ${sessionId} has yet no long-term memory; do not perform imagination`,
-                {correlationId, sessionId});
+            log.log(`imagine: doc ID ${docId} has yet no long-term memory; do not perform imagination`,
+                {correlationId, docId});
             return {
                 imagination: null,
             };
@@ -59,9 +59,9 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
                 [MODEL_PROMPT_TEXT_FIELD]: !imagination ? summary : imagination,
             };
         });
-        log.log(`imagine: context for session ID ${sessionId}`, {correlationId, sessionId, context});
+        log.log(`imagine: context for doc ID ${docId}`, {correlationId, docId, context});
         const prompt = MODEL_PROMPT(context);
-        log.log('imagine: prompt', {correlationId, sessionId, prompt});
+        log.log('imagine: prompt', {correlationId, docId, prompt});
         const startChat = new Date();
         const {content: imagination} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
         const elapsedChat = time.elapsedSecs(startChat);
@@ -86,7 +86,7 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
             ...extra,
             prompt,
         };
-        const {index, timestamp} = await memory.addImagination(correlationId, sessionId, {
+        const {index, timestamp} = await memory.addImagination(correlationId, docId, {
             [common.IMAGINATION_FIELD]: imagination,
             [common.IMAGINATION_EMBEDDING_FIELD]: imaginationEmbedding,
         }, dbExtra);
