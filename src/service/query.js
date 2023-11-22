@@ -69,35 +69,36 @@ const RECURSION_TIMEOUT = strictParse.int(process.env.QUERY_RECURSION_TIMEOUT_SE
 const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 
-const query = wrapper.logCorrelationId('service.query.query', async (correlationId, sessionId, query, subroutineQuery, forbiddenRecursedQueries) => {
-    log.log('query: parameters', {correlationId, sessionId, query, subroutineQuery, forbiddenRecursedQueries});
+const query = wrapper.logCorrelationId('service.query.query', async (correlationId, userId, sessionId, query, subroutineQuery, forbiddenRecursedQueries) => {
+    log.log('query: parameters', {correlationId, userId, sessionId, query, subroutineQuery, forbiddenRecursedQueries});
+    const docId = common.DOC_ID.from(userId, sessionId);
     const start = new Date();
     const {queryTokenCount, subroutineQueryTokenCount} =
-        await getQueryTokenCounts(correlationId, sessionId, query, subroutineQuery);
+        await getQueryTokenCounts(correlationId, docId, query, subroutineQuery);
     const [
         {info, infoTokenCount},
         {search, searchTokenCount},
         {subroutineHistory},
         {queryEmbedding, shortTermContext, longTermContext},
     ] = await Promise.all([
-        getInfo(correlationId, sessionId, query, subroutineQuery),
-        getSearch(correlationId, sessionId, query, subroutineQuery),
-        getSubroutineHistory(correlationId, sessionId),
+        getInfo(correlationId, docId, query, subroutineQuery),
+        getSearch(correlationId, docId, query, subroutineQuery),
+        getSubroutineHistory(correlationId, docId),
         (async () => {
             const {embedding: queryEmbedding} = await common.embedWithRetry(correlationId, query);
             const [
                 {shortTermContext},
                 {longTermContext},
             ] = await Promise.all([
-                getShortTermContext(correlationId, sessionId, start, queryEmbedding),
-                getLongTermContext(correlationId, sessionId, queryEmbedding),
+                getShortTermContext(correlationId, docId, start, queryEmbedding),
+                getLongTermContext(correlationId, docId, queryEmbedding),
             ]);
             return {queryEmbedding, shortTermContext, longTermContext};
         })(),
     ]);
     const prelimPrompt = MODEL_PROMPT(
         info, search, subroutineHistory, [], longTermContext, shortTermContext, query, subroutineQuery);
-    log.log('query: prelim prompt', {correlationId, sessionId, prelimPrompt});
+    log.log('query: prelim prompt', {correlationId, docId, prelimPrompt});
     const startPrelimChat = new Date();
     const {content: prelimReply, functionCalls: rawFunctionCalls} = await common.chatWithRetry(
         correlationId, prelimPrompt, REPLY_TOKEN_COUNT_LIMIT, MODEL_FUNCTIONS);
@@ -110,7 +111,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
     let elapsedUpdatedChat = 0;
     let updatedPromptTokenCount = 0;
     if (!prelimReply) {
-        log.log('query: function call: function calls', {correlationId, sessionId, functionCalls});
+        log.log('query: function call: function calls', {correlationId, docId, functionCalls});
         const startFunctionCalls = new Date();
         // NB: GPT likes to recurse with same query, or one of its siblings (a -> [b, c]; b -> c; c -> b).
         //  We do allow recursing to a sibling, but to prevent infinite recursion, we forbid repeating an ancestor.
@@ -125,23 +126,23 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
                     const {[MODEL_RECURSION_FUNCTION_ARG_NAME]: recursedQuery} = args;
                     if (!recursedQuery) {
                         log.log(`query: function call: ${name}: recursedQuery is required`,
-                            {correlationId, sessionId, name, args});
+                            {correlationId, docId, name, args});
                         continue;
                     }
                     if (updatedForbiddenRecursedQueries.includes(recursedQuery)) {
                         log.log(`query: function call: ${name}: recursedQuery is forbidden`,
-                            {correlationId, sessionId, name, args, recursedQuery, updatedForbiddenRecursedQueries});
+                            {correlationId, docId, name, args, recursedQuery, updatedForbiddenRecursedQueries});
                         continue;
                     }
                     const recursedCorrelationId = uuid.v4();
                     log.log(`query: function call: ${name}: recursed correlation id`,
-                        {correlationId, sessionId, name, recursedQuery, recursedCorrelationId});
+                        {correlationId, docId, name, recursedQuery, recursedCorrelationId});
                     const functionTask =
-                        getRecursionRes(correlationId, sessionId, query, recursedCorrelationId, recursedQuery, updatedForbiddenRecursedQueries);
+                        getRecursionRes(correlationId, docId, query, recursedCorrelationId, recursedQuery, updatedForbiddenRecursedQueries);
                     functionTasks.push(functionTask);
                     break;
                 default:
-                    log.log(`query: function call: unknown function: ${name}`, {correlationId, sessionId, name, args});
+                    log.log(`query: function call: unknown function: ${name}`, {correlationId, docId, name, args});
             }
         }
         functionResults = (await Promise.all(functionTasks))
@@ -149,7 +150,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         elapsedFunctionCalls = time.elapsedSecs(startFunctionCalls);
         if (!functionResults.length) {
             log.log('query: function call: no viable result; no special action needed',
-                {correlationId, sessionId});
+                {correlationId, docId});
         }
         const subroutineResults = functionResults.map(({query, reply}) => ({
             [MODEL_PROMPT_QUERY_FIELD]: query,
@@ -157,7 +158,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         }));
         updatedPrompt = MODEL_PROMPT(
             info, search, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
-        log.log('query: updated prompt', {correlationId, sessionId, updatedPrompt});
+        log.log('query: updated prompt', {correlationId, docId, updatedPrompt});
         const startUpdatedChat = new Date();
         const {content: updatedReply_} = await common.chatWithRetry(
             correlationId, updatedPrompt, REPLY_TOKEN_COUNT_LIMIT, []);
@@ -207,7 +208,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
     ] = await Promise.all([
         (async () => {
             for (const {query, reply} of functionResults) {
-                await memory.addSubroutine(correlationId, sessionId, {
+                await memory.addSubroutine(correlationId, docId, {
                     [common.QUERY_FIELD]: query,
                     [common.REPLY_FIELD]: reply,
                 }, {correlationId});
@@ -220,16 +221,16 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
                 prelimPrompt,
                 updatedPrompt,
             };
-            return await memory.add(correlationId, sessionId, {
+            return await memory.add(correlationId, docId, {
                 [common.QUERY_FIELD]: query,
                 [common.QUERY_EMBEDDING_FIELD]: queryEmbedding,
                 [common.REPLY_FIELD]: reply,
                 [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
             }, dbExtra, false);
         })(),
-        setScheduledImagination(correlationId, sessionId),
+        setScheduledImagination(correlationId, docId),
     ]);
-    triggerBackgroundTasks(correlationId, sessionId, index);
+    triggerBackgroundTasks(correlationId, docId, index);
     return {
         index,
         timestamp,
@@ -239,19 +240,19 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
     };
 });
 
-const getQueryTokenCounts = async (correlationId, sessionId, query, subroutineQuery) => {
+const getQueryTokenCounts = async (correlationId, docId, query, subroutineQuery) => {
     let queryTokenCount = 0;
     let subroutineQueryTokenCount = 0;
     if (!subroutineQuery) {
         queryTokenCount = await tokenizer.countTokens(correlationId, query);
-        log.log('query: query token count', {correlationId, sessionId, queryTokenCount});
+        log.log('query: query token count', {correlationId, docId, queryTokenCount});
         if (queryTokenCount > QUERY_TOKEN_COUNT_LIMIT) {
             throw new Error(`query: query token count exceeds limit of ${QUERY_TOKEN_COUNT_LIMIT}: ${queryTokenCount}`);
         }
     } else {
         // assume query is already ok
         subroutineQueryTokenCount = await tokenizer.countTokens(correlationId, subroutineQuery);
-        log.log('query: subroutine query token count', {correlationId, sessionId, subroutineQueryTokenCount});
+        log.log('query: subroutine query token count', {correlationId, docId, subroutineQueryTokenCount});
         if (subroutineQueryTokenCount > SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT) {
             throw new Error(`query: subroutine query token count exceeds limit of ${SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT}: ${subroutineQueryTokenCount}`);
         }
@@ -259,7 +260,7 @@ const getQueryTokenCounts = async (correlationId, sessionId, query, subroutineQu
     return {queryTokenCount, subroutineQueryTokenCount};
 };
 
-const getInfo = async (correlationId, sessionId, query, subroutineQuery) => {
+const getInfo = async (correlationId, docId, query, subroutineQuery) => {
     let info = '';
     let infoTokenCount = 0;
     // NB: do not do at top level; it overly influences GPT
@@ -274,14 +275,14 @@ const getInfo = async (correlationId, sessionId, query, subroutineQuery) => {
             }
         } catch (e) {
             log.log('query: wolfram alpha query failed; continue since it is not critical',
-                {correlationId, sessionId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
+                {correlationId, docId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
         }
-        log.log('query: info', {correlationId, sessionId, info, infoTokenCount});
+        log.log('query: info', {correlationId, docId, info, infoTokenCount});
     }
     return {info, infoTokenCount};
 };
 
-const getSearch = async (correlationId, sessionId, query, subroutineQuery) => {
+const getSearch = async (correlationId, docId, query, subroutineQuery) => {
     let search = '';
     let searchTokenCount = 0;
     // NB: do not do at top level; it overly influences GPT
@@ -296,15 +297,15 @@ const getSearch = async (correlationId, sessionId, query, subroutineQuery) => {
             }
         } catch (e) {
             log.log('query: serp search failed; continue since it is not critical',
-                {correlationId, sessionId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
+                {correlationId, docId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
         }
-        log.log('query: search', {correlationId, sessionId, search, searchTokenCount});
+        log.log('query: search', {correlationId, docId, search, searchTokenCount});
     }
     return {search, searchTokenCount};
 };
 
-const getSubroutineHistory = async (correlationId, sessionId) => {
-    const rawSubroutineHistory = await memory.getSubroutines(correlationId, sessionId, SUBROUTINE_HISTORY_COUNT);
+const getSubroutineHistory = async (correlationId, docId) => {
+    const rawSubroutineHistory = await memory.getSubroutines(correlationId, docId, SUBROUTINE_HISTORY_COUNT);
     const subroutineHistory = rawSubroutineHistory.map(
         ({
              [common.QUERY_FIELD]: query,
@@ -316,8 +317,8 @@ const getSubroutineHistory = async (correlationId, sessionId) => {
     return {subroutineHistory};
 };
 
-const getShortTermContext = async (correlationId, sessionId, start, queryEmbedding) => {
-    const rawShortTermContext = await memory.shortTermSearch(correlationId, sessionId, (elt, i, timestamp) => {
+const getShortTermContext = async (correlationId, docId, start, queryEmbedding) => {
+    const rawShortTermContext = await memory.shortTermSearch(correlationId, docId, (elt, i, timestamp) => {
         const ms = start - timestamp;
         const getSim = () => {
             const {
@@ -349,12 +350,12 @@ const getShortTermContext = async (correlationId, sessionId, start, queryEmbeddi
             [MODEL_PROMPT_INTROSPECTION_FIELD]: introspection,
         };
     }).reverse();
-    log.log('query: short-term context', {correlationId, sessionId, shortTermContext});
+    log.log('query: short-term context', {correlationId, docId, shortTermContext});
     return {shortTermContext};
 };
 
-const getLongTermContext = async (correlationId, sessionId, queryEmbedding) => {
-    const rawLongTermContext = await memory.longTermSearch(correlationId, sessionId, (_, consolidation) => {
+const getLongTermContext = async (correlationId, docId, queryEmbedding) => {
+    const rawLongTermContext = await memory.longTermSearch(correlationId, docId, (_, consolidation) => {
         const targetEmbedding = consolidation[common.SUMMARY_EMBEDDING_FIELD] || consolidation[common.IMAGINATION_EMBEDDING_FIELD];
         return common.cosineSimilarity(queryEmbedding, targetEmbedding);
     }, LONG_TERM_CONTEXT_COUNT);
@@ -367,21 +368,23 @@ const getLongTermContext = async (correlationId, sessionId, queryEmbedding) => {
         } : {
             [MODEL_PROMPT_IMAGINATION_FIELD]: imagination,
         }).reverse();
-    log.log('query: long-term context', {correlationId, sessionId, longTermContext});
+    log.log('query: long-term context', {correlationId, docId, longTermContext});
     return {longTermContext};
 };
 
-const getRecursionRes = async (correlationId, sessionId, query, recursedCorrelationId, recursedQuery, updatedForbiddenRecursedQueries) => {
+const getRecursionRes = async (correlationId, docId, query, recursedCorrelationId, recursedQuery, updatedForbiddenRecursedQueries) => {
+    const {userId, sessionId} = common.DOC_ID.parse(docId);
     try {
         const resp = await fetch_.withTimeout(QUERY_INTERNAL_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Correlation-Id': recursedCorrelationId,
+                [common_.CORRELATION_ID_HEADER]: recursedCorrelationId,
+                [common_.INTERNAL_API_ACCESS_KEY_HEADER]: common_.SECRETS.INTERNAL_API_ACCESS_KEY,
             },
             body: JSON.stringify({
-                sessionId, query, subroutineQuery: recursedQuery,
-                forbiddenRecursedQueries: updatedForbiddenRecursedQueries,
+                userId, sessionId, query,
+                subroutineQuery: recursedQuery, forbiddenRecursedQueries: updatedForbiddenRecursedQueries,
             }),
         }, RECURSION_TIMEOUT);
         if (!resp.ok) {
@@ -393,57 +396,60 @@ const getRecursionRes = async (correlationId, sessionId, query, recursedCorrelat
             ...data,
         };
         log.log(`query: recursion: result`,
-            {correlationId, sessionId, recursedQuery, recursedCorrelationId});
+            {correlationId, docId, recursedQuery, recursedCorrelationId});
         return {recursionRes};
     } catch (e) {
         log.log(`query: recursion: failed`, {
-            correlationId, sessionId, recursedQuery, recursedCorrelationId,
+            correlationId, docId, recursedQuery, recursedCorrelationId,
             error: e.message || '', stack: e.stack || '',
         });
         return {recursionRes: null};
     }
 };
 
-const setScheduledImagination = async (correlationId, sessionId) => {
-    return await memory.scheduleImagination(correlationId, sessionId, (curr) => {
+const setScheduledImagination = async (correlationId, docId) => {
+    return await memory.scheduleImagination(correlationId, docId, (curr) => {
         if (curr) {
             return curr;
         }
         const scheduledImagination = new Date(
             new Date().getTime() + MIN_SCHEDULED_IMAGINATION_DELAY
             + Math.random() * (MAX_SCHEDULED_IMAGINATION_DELAY - MIN_SCHEDULED_IMAGINATION_DELAY));
-        log.log('query: scheduled imagination', {correlationId, sessionId, scheduledImagination});
+        log.log('query: scheduled imagination', {correlationId, docId, scheduledImagination});
         return scheduledImagination;
     }).catch((e) => {
         log.log('query: schedule imagination failed; continue since it is of low priority', {
-            correlationId, sessionId, error: e.message || '', stack: e.stack || '',
+            correlationId, docId, error: e.message || '', stack: e.stack || '',
         });
         return null;
     });
 };
 
-const triggerBackgroundTasks = (correlationId, sessionId, index) => {
+const triggerBackgroundTasks = (correlationId, docId, index) => {
+    const {userId, sessionId} = common.DOC_ID.parse(docId);
     fetch_.withTimeout(CONSOLIDATE_INTERNAL_URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-Correlation-Id': correlationId,
+            [common_.CORRELATION_ID_HEADER]: correlationId,
+            [common_.INTERNAL_API_ACCESS_KEY_HEADER]: common_.SECRETS.INTERNAL_API_ACCESS_KEY,
         },
-        body: JSON.stringify({sessionId}),
+        body: JSON.stringify({userId, sessionId}),
     }, 60 * 1000).catch((e) =>
         log.log(`query: fetch ${common_.CONSOLIDATE_INTERNAL_ROUTE} failed, likely timed out`, {
-            correlationId, sessionId, error: e.message || '', stack: e.stack || '',
+            correlationId, docId, error: e.message || '', stack: e.stack || '',
         }));
     fetch_.withTimeout(INTROSPECT_INTERNAL_URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-Correlation-Id': correlationId,
+            [common_.CORRELATION_ID_HEADER]: correlationId,
+            [common_.INTERNAL_API_ACCESS_KEY_HEADER]: common_.SECRETS.INTERNAL_API_ACCESS_KEY,
         },
-        body: JSON.stringify({sessionId, index}),
+        body: JSON.stringify({userId, sessionId, index}),
     }, 60 * 1000).catch((e) =>
         log.log(`query: fetch ${common_.INTROSPECT_INTERNAL_ROUTE} failed, likely timed out`, {
-            correlationId, sessionId, error: e.message || '', stack: e.stack || '',
+            correlationId, docId, error: e.message || '', stack: e.stack || '',
         }));
 };
 

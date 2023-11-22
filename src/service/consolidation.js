@@ -16,9 +16,10 @@ const MODEL_PROMPT = (context) =>
     + `\nsummarize`;
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.CONSOLIDATION_TOKEN_COUNT_LIMIT);
 
-const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate', async (correlationId, sessionId) => {
-    log.log('consolidate: parameters', {correlationId, sessionId});
-    const rawConsolidationRes = await memory.consolidate(correlationId, sessionId, async (lvl, raw) => {
+const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate', async (correlationId, userId, sessionId) => {
+    log.log('consolidate: parameters', {correlationId, userId, sessionId});
+    const docId = common.DOC_ID.from(userId, sessionId);
+    const rawConsolidationRes = await memory.consolidate(correlationId, docId, async (lvl, raw) => {
         const start = new Date();
         // NB: strangely, in order of effectiveness: {text: summary} > summary > {summary}
         const context = lvl ? raw.map((
@@ -37,9 +38,9 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         } : {
             [MODEL_PROMPT_INTROSPECTION_FIELD]: introspection,
         });
-        log.log('consolidate: context', {correlationId, sessionId, lvl, context});
+        log.log('consolidate: context', {correlationId, docId, lvl, context});
         const prompt = MODEL_PROMPT(context);
-        log.log('consolidate: prompt', {correlationId, sessionId, lvl, prompt});
+        log.log('consolidate: prompt', {correlationId, docId, lvl, prompt});
         const startChat = new Date();
         const {content: summary} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
         const elapsedChat = time.elapsedSecs(startChat);

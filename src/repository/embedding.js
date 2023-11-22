@@ -1,3 +1,4 @@
+import common_ from '../common.js';
 import fetch_ from '../util/fetch.js';
 import strictParse from '../util/strictParse.js';
 import wrapper from '../util/wrapper.js';
@@ -11,7 +12,7 @@ const embed = wrapper.logCorrelationId('repository.embedding.embed', async (corr
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+            'Authorization': `Bearer ${common_.SECRETS.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
             model: MODEL,
