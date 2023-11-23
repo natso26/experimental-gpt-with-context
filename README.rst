@@ -52,5 +52,5 @@ Engineering
 - Google Cloud Run, Firestore.
 - Consolidation, Introspection by HTTP requests to keep Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
-- Frontend of query and history pages; VanillaJS.
 - Security by manually added user IDs and secret key.
+- Frontend of query and history pages; VanillaJS.
