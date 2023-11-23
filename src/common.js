@@ -17,11 +17,13 @@ const SECRETS = (() => {
         OPENAI_API_KEY,
         WOLFRAM_ALPHA_APP_ID,
         SERPAPI_API_KEY,
+        ZENROWS_API_KEY,
     } = process.env;
     if (!(INTERNAL_API_ACCESS_KEY
         && OPENAI_API_KEY
         && WOLFRAM_ALPHA_APP_ID
-        && SERPAPI_API_KEY)) {
+        && SERPAPI_API_KEY
+        && ZENROWS_API_KEY)) {
         throw new Error('env secrets not properly set');
     }
     return {
@@ -29,6 +31,7 @@ const SECRETS = (() => {
         OPENAI_API_KEY,
         WOLFRAM_ALPHA_APP_ID,
         SERPAPI_API_KEY,
+        ZENROWS_API_KEY,
     };
 })();
 

@@ -9,8 +9,8 @@ const TIMEOUT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_API_TIMEOUT_SECS
 const query = wrapper.logCorrelationId('repository.wolframAlpha.query', async (correlationId, query) => {
     const resp = await fetch_.withTimeout(`${URL}?${new URLSearchParams({
         appid: common_.SECRETS.WOLFRAM_ALPHA_APP_ID,
-        input: query,
         output: 'JSON',
+        input: query,
     })}`, {}, TIMEOUT);
     if (!resp.ok) {
         throw new Error(`wolfram alpha query api error, status: ${resp.status}`);
