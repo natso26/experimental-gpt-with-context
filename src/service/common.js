@@ -2,6 +2,7 @@ import embedding from '../repository/embedding.js';
 import chat from '../repository/chat.js';
 import wolframAlpha from '../repository/wolframAlpha.js';
 import serp from '../repository/serp.js';
+import scraper from '../repository/scraper.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 
@@ -29,6 +30,7 @@ const EMBED_RETRY_COUNT = strictParse.int(process.env.EMBED_REPOSITORY_RETRY_COU
 const CHAT_RETRY_COUNT = strictParse.int(process.env.CHAT_REPOSITORY_RETRY_COUNT);
 const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_REPOSITORY_RETRY_COUNT);
 const SERP_SEARCH_RETRY_COUNT = strictParse.int(process.env.SERP_SEARCH_REPOSITORY_RETRY_COUNT);
+const SCRAPER_EXTRACT_RETRY_COUNT = strictParse.int(process.env.SCRAPER_EXTRACT_REPOSITORY_RETRY_COUNT);
 
 const cosineSimilarity = (a, b) => a.map((e, i) => e * b[i]).reduce((x, y) => x + y);
 
@@ -71,6 +73,12 @@ const serpSearchWithRetry = retry(serp.search, (e, cnt) => {
     return cnt < SERP_SEARCH_RETRY_COUNT;
 });
 
+const scraperExtractWithRetry = retry(scraper.extract, (e, cnt) => {
+    log.log(`scraper extract repository failed, retry count: ${cnt}`,
+        {cnt, error: e.message || '', stack: e.stack || ''});
+    return cnt < SCRAPER_EXTRACT_RETRY_COUNT;
+});
+
 export default {
     DOC_ID,
     QUERY_FIELD,
@@ -91,4 +99,5 @@ export default {
     chatWithRetry,
     wolframAlphaQueryWithRetry,
     serpSearchWithRetry,
+    scraperExtractWithRetry,
 };
