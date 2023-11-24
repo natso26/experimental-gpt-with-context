@@ -6,6 +6,7 @@ import history from './handler/history.js';
 import consolidate from './handler/consolidate.js';
 import introspect from './handler/introspect.js';
 import imagine from './handler/imagine.js';
+import research from './handler/research.js';
 import common from './common.js';
 import log from './util/log.js';
 import wrapper from './util/wrapper.js';
@@ -74,4 +75,5 @@ app.post(common.QUERY_INTERNAL_ROUTE, wrapHandler(common.QUERY_INTERNAL_ROUTE, q
 app.post(common.CONSOLIDATE_INTERNAL_ROUTE, wrapHandler(common.CONSOLIDATE_INTERNAL_ROUTE, consolidate.internalConsolidate));
 app.post(common.INTROSPECT_INTERNAL_ROUTE, wrapHandler(common.INTROSPECT_INTERNAL_ROUTE, introspect.internalIntrospect));
 app.post(common.IMAGINE_INTERNAL_ROUTE, wrapHandler(common.IMAGINE_INTERNAL_ROUTE, imagine.internalImagine));
+app.post(common.RESEARCH_INTERNAL_ROUTE, wrapHandler(common.RESEARCH_INTERNAL_ROUTE, research.internalResearch));
 app.listen(process.env.PORT);

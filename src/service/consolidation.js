@@ -13,7 +13,7 @@ const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
     common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
     + `\ncontext: ${JSON.stringify(context)}`
-    + `\nsummarize`;
+    + `\nconsolidate`;
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.CONSOLIDATION_TOKEN_COUNT_LIMIT);
 
 const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate', async (correlationId, userId, sessionId) => {

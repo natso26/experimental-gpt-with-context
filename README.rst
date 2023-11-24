@@ -12,7 +12,7 @@ Sequence of ``query`` and ``reply`` pairs. Internal flow:
 .. code-block:: none
 
    knowledge
-   |
+   ^
    |           /--+
    v          v   |
    action <-> (query, reply) <-> introspection
@@ -41,9 +41,11 @@ Mechanism
 4. Imagination. Thoughts on random selection of related ``summary`` and ``imagination``,
    scheduled in advance after user interaction.
 
-5. Action. Can recursively query to itself.
+5. Action. Can recursively launch subtasks.
 
 6. Knowledge. Query Wolfram|Alpha and Google search engine results pages.
+
+7. Research. Search for information from web sites.
 
 
 Engineering
