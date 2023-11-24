@@ -52,7 +52,7 @@ Engineering
 -----------
 
 - Google Cloud Run, Firestore.
+- Security by manually added user IDs and secret key.
 - Consolidation, Introspection by HTTP requests to keep Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
-- Security by manually added user IDs and secret key.
 - Frontend of query and history pages; VanillaJS.
