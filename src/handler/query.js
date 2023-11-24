@@ -11,7 +11,7 @@ const externalQuery = wrapper.logCorrelationId('handler.query.externalQuery', as
         throw new Error('fields `userId`, `sessionId` must be UUID v4; `query` must be nonempty string');
     }
     const {isDev} = await user_.getRole(correlationId, userId);
-    const ret = await query_.query(correlationId, userId, sessionId, query, null, []);
+    const ret = await query_.query(correlationId, userId, sessionId, query, null, null, []);
     if (!isDev) {
         const {reply} = ret;
         return {reply};
@@ -21,15 +21,16 @@ const externalQuery = wrapper.logCorrelationId('handler.query.externalQuery', as
 });
 
 const internalQuery = wrapper.logCorrelationId('handler.query.internalQuery', async (correlationId, body) => {
-    const {userId, sessionId, query, subroutineQuery, forbiddenRecursedQueries} = body;
+    const {userId, sessionId, query, recursedNote, recursedQuery, recursedQueryStack} = body;
     if (!common.isUuidV4(userId)
         || !common.isUuidV4(sessionId)
         || !common.isNonEmptyString(query)
-        || !(subroutineQuery === null || common.isNonEmptyString(subroutineQuery))
-        || !(Array.isArray(forbiddenRecursedQueries) && forbiddenRecursedQueries.every(common.isNonEmptyString))) {
+        || !(recursedNote === null || common.isNonEmptyString(recursedNote))
+        || !(recursedQuery === null || common.isNonEmptyString(recursedQuery))
+        || !(Array.isArray(recursedQueryStack) && recursedQueryStack.every(common.isNonEmptyString))) {
         throw new Error('some fields are invalid');
     }
-    return await query_.query(correlationId, userId, sessionId, query, subroutineQuery, forbiddenRecursedQueries);
+    return await query_.query(correlationId, userId, sessionId, query, recursedNote, recursedQuery, recursedQueryStack);
 });
 
 export default {

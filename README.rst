@@ -11,17 +11,17 @@ Sequence of ``query`` and ``reply`` pairs. Internal flow:
 
 .. code-block:: none
 
-                  knowledge --\
-                               |
-                   /--+        |
-                  v   |        v
-   subroutine <-> (query, reply) <-> introspection
-                  ^            ^     |
-                  |      /-----+------
-                  v     v       \----+
-                  summary ---------> imagination
-                   ^   |             ^   |
-                    \--+              \--+
+              knowledge --\
+                           |
+               /--+        |
+              v   |        v
+   action <-> (query, reply) <-> introspection
+              ^            ^     |
+              |      /-----+------
+              v     v       \----+
+              summary ---------> imagination
+              ^   |              ^   |
+               \--+               \--+
 
 
 Mechanism
@@ -41,7 +41,7 @@ Mechanism
 4. Imagination. Thoughts on random selection of related ``summary`` and ``imagination``,
    scheduled in advance after user interaction.
 
-5. Subroutine. Can recursively query to itself.
+5. Action. Can recursively query to itself.
 
 6. Knowledge. Query Wolfram|Alpha and Google search engine results pages.
 
