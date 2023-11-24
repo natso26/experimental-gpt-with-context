@@ -12,41 +12,52 @@ import time from '../util/time.js';
 const QUERY_INTERNAL_URL = `${process.env.INTERNAL_API_HOST}${common_.QUERY_INTERNAL_ROUTE}`;
 const CONSOLIDATE_INTERNAL_URL = `${process.env.INTERNAL_API_HOST}${common_.CONSOLIDATE_INTERNAL_ROUTE}`;
 const INTROSPECT_INTERNAL_URL = `${process.env.INTERNAL_API_HOST}${common_.INTROSPECT_INTERNAL_ROUTE}`;
+const MODEL_PROMPT_TYPE_FIELD = 'type';
+const MODEL_PROMPT_RECURSED_NOTE_FIELD = 'recursedNote';
+const MODEL_PROMPT_RECURSED_QUERY_FIELD = 'recursedQuery';
 const MODEL_PROMPT_SCORE_FIELD = 'score';
 const MODEL_PROMPT_QUERY_FIELD = 'query';
 const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_SUMMARY_FIELD = 'summary';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_IMAGINATION_FIELD = 'imagination';
-const MODEL_PROMPT = (info, search, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery) =>
-    (!subroutineQuery ? common.MODEL_PROMPT_EXTERNAL_COMPONENT_MSG : common.MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG)
+const MODEL_PROMPT = (info, search, actionHistory, actions, longTermContext, shortTermContext, query, recursedNote, recursedQuery) =>
+    (!recursedQuery ? common.MODEL_PROMPT_EXTERNAL_COMPONENT_MSG : common.MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG)
     + (!info ? '' : `\ninternal information component: ${info}`)
     + (!search ? '' : `\ninternal search component: ${search}`)
-    + `\ninternal subroutine history: ${JSON.stringify(subroutineHistory)}`
-    + (!subroutineResults.length ? '' : `\ninternal subroutines: ${JSON.stringify(subroutineResults)}`)
+    + `\ninternal action history: ${JSON.stringify(actionHistory)}`
+    + (!actions.length ? '' : `\ninternal actions: ${JSON.stringify(actions)}`)
     + `\nlong-term context: ${JSON.stringify(longTermContext)}`
     + `\nshort-term context: ${JSON.stringify(shortTermContext)}`
     + `\nquery: ${JSON.stringify(query)}`
-    // NB: it is better to not duplicate in special case of recursing to same query
-    + ((!subroutineQuery || subroutineQuery === query) ? '' : `\ninternal subroutine query: ${JSON.stringify(subroutineQuery)}`);
-const MODEL_RECURSION_FUNCTION_NAME = 'thoughts';
-const MODEL_RECURSION_FUNCTION_ARG_NAME = 'recursedQuery';
-const MODEL_FUNCTIONS = [
-    {
-        name: MODEL_RECURSION_FUNCTION_NAME,
-        description: '',
-        parameters: {
-            type: 'object',
-            properties: {[MODEL_RECURSION_FUNCTION_ARG_NAME]: {type: 'string'}},
-            required: [MODEL_RECURSION_FUNCTION_ARG_NAME],
+    + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
+    // NB: better to not duplicate in case of recursing to same query
+    + ((!recursedQuery || recursedQuery === query) ? '' : `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`);
+const MODEL_FUNCTION_NAME = 'act';
+const MODEL_FUNCTION_TYPE_ARG_NAME = 'type';
+const MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME = 'recursedNote';
+const MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME = 'recursedQuery';
+const MODEL_FUNCTION_TYPE_THOUGHTS = 'thoughts';
+const MODEL_FUNCTION_TYPES = [MODEL_FUNCTION_TYPE_THOUGHTS];
+const MODEL_FUNCTION = {
+    name: MODEL_FUNCTION_NAME,
+    description: '',
+    parameters: {
+        type: 'object',
+        properties: {
+            [MODEL_FUNCTION_TYPE_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_TYPES},
+            [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {type: 'string'},
+            [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: {type: 'string'},
         },
+        required: [MODEL_FUNCTION_TYPE_ARG_NAME, MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME],
     },
-];
+};
 const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_QUERY_TOKEN_COUNT_LIMIT);
-const SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT);
+const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
+const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
 const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_INFO_TRUNCATION_TOKEN_COUNT);
 const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_TRUNCATION_TOKEN_COUNT);
-const SUBROUTINE_HISTORY_COUNT = strictParse.int(process.env.QUERY_SUBROUTINE_HISTORY_COUNT);
+const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
 const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_COUNT);
 const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
 const CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY);
@@ -69,21 +80,22 @@ const RECURSION_TIMEOUT = strictParse.int(process.env.QUERY_RECURSION_TIMEOUT_SE
 const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 
-const query = wrapper.logCorrelationId('service.query.query', async (correlationId, userId, sessionId, query, subroutineQuery, forbiddenRecursedQueries) => {
-    log.log('query: parameters', {correlationId, userId, sessionId, query, subroutineQuery, forbiddenRecursedQueries});
+const query = wrapper.logCorrelationId('service.query.query', async (correlationId, userId, sessionId, query, recursedNote, recursedQuery, recursedQueryStack) => {
+    log.log('query: parameters',
+        {correlationId, userId, sessionId, query, recursedNote, recursedQuery, recursedQueryStack});
     const docId = common.DOC_ID.from(userId, sessionId);
     const start = new Date();
-    const {queryTokenCount, subroutineQueryTokenCount} =
-        await getQueryTokenCounts(correlationId, docId, query, subroutineQuery);
+    const {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount} =
+        await getTokenCounts(correlationId, docId, query, recursedNote, recursedQuery);
     const [
         {info, infoTokenCount},
         {search, searchTokenCount},
-        {subroutineHistory},
+        {actionHistory},
         {queryEmbedding, shortTermContext, longTermContext},
     ] = await Promise.all([
-        getInfo(correlationId, docId, query, subroutineQuery),
-        getSearch(correlationId, docId, query, subroutineQuery),
-        getSubroutineHistory(correlationId, docId),
+        getInfo(correlationId, docId, query, recursedQuery),
+        getSearch(correlationId, docId, query, recursedQuery),
+        getActionHistory(correlationId, docId),
         (async () => {
             const {embedding: queryEmbedding} = await common.embedWithRetry(correlationId, query);
             const [
@@ -97,14 +109,15 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         })(),
     ]);
     const prelimPrompt = MODEL_PROMPT(
-        info, search, subroutineHistory, [], longTermContext, shortTermContext, query, subroutineQuery);
+        info, search, actionHistory, [], longTermContext, shortTermContext, query, recursedNote, recursedQuery);
     log.log('query: prelim prompt', {correlationId, docId, prelimPrompt});
     const startPrelimChat = new Date();
     const {content: prelimReply, functionCalls: rawFunctionCalls} = await common.chatWithRetry(
-        correlationId, prelimPrompt, REPLY_TOKEN_COUNT_LIMIT, MODEL_FUNCTIONS);
+        correlationId, prelimPrompt, REPLY_TOKEN_COUNT_LIMIT, MODEL_FUNCTION);
     const functionCalls = rawFunctionCalls || [];
     const elapsedPrelimChat = time.elapsedSecs(startPrelimChat);
-    let functionResults = [];
+    let actions = [];
+    let formattedActions = [];
     let elapsedFunctionCalls = 0;
     let updatedPrompt = '';
     let updatedReply = '';
@@ -113,55 +126,66 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
     if (!prelimReply) {
         log.log('query: function call: function calls', {correlationId, docId, functionCalls});
         const startFunctionCalls = new Date();
-        // NB: GPT likes to recurse with same query, or one of its siblings (a -> [b, c]; b -> c; c -> b).
-        //  We do allow recursing to a sibling, but to prevent infinite recursion, we forbid repeating an ancestor.
-        //  Except top-level query is allowed to immediately repeat to leverage more data.
-        const updatedForbiddenRecursedQueries = [...new Set([
-            ...forbiddenRecursedQueries, ...(!subroutineQuery ? [] : [query, subroutineQuery]),
-        ])];
-        const functionTasks = [];
+        const recursedNextQueryStack = !recursedQuery ? [query] : [...recursedQueryStack, recursedQuery];
+        const actionTasks = [];
         for (const {name, args} of functionCalls) {
-            switch (name) {
-                case MODEL_RECURSION_FUNCTION_NAME:
-                    const {[MODEL_RECURSION_FUNCTION_ARG_NAME]: recursedQuery} = args;
-                    if (!recursedQuery) {
-                        log.log(`query: function call: ${name}: recursedQuery is required`,
-                            {correlationId, docId, name, args});
-                        continue;
-                    }
-                    if (updatedForbiddenRecursedQueries.includes(recursedQuery)) {
-                        log.log(`query: function call: ${name}: recursedQuery is forbidden`,
-                            {correlationId, docId, name, args, recursedQuery, updatedForbiddenRecursedQueries});
-                        continue;
-                    }
-                    const recursedCorrelationId = uuid.v4();
-                    log.log(`query: function call: ${name}: recursed correlation id`,
-                        {correlationId, docId, name, recursedQuery, recursedCorrelationId});
-                    const functionTask =
-                        getRecursionRes(correlationId, docId, query, recursedCorrelationId, recursedQuery, updatedForbiddenRecursedQueries);
-                    functionTasks.push(functionTask);
+            if (name !== MODEL_FUNCTION_NAME) {
+                log.log(`query: function call: invalid function: ${name}`, {correlationId, docId, name, args});
+                continue;
+            }
+            const {
+                [MODEL_FUNCTION_TYPE_ARG_NAME]: type,
+                [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: recursedNextNote,
+                [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery,
+            } = args;
+            if (!(MODEL_FUNCTION_TYPES.includes(type) && recursedNextNote && recursedNextQuery)) {
+                log.log(`query: function call: invalid args`, {correlationId, docId, args});
+                continue;
+            }
+            switch (type) {
+                case MODEL_FUNCTION_TYPE_THOUGHTS:
+                    actionTasks.push((async () => {
+                        const {data} =
+                            await thoughtsAction(correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack);
+                        if (!data) {
+                            return {
+                                full: null,
+                            };
+                        }
+                        const {reply} = data;
+                        return {
+                            full: {
+                                type,
+                                recursedNextNote,
+                                recursedNextQuery,
+                                data,
+                            },
+                            formatted: {
+                                [MODEL_PROMPT_TYPE_FIELD]: type,
+                                [MODEL_PROMPT_RECURSED_NOTE_FIELD]: recursedNextNote,
+                                [MODEL_PROMPT_RECURSED_QUERY_FIELD]: recursedNextQuery,
+                                [MODEL_PROMPT_REPLY_FIELD]: reply,
+                            },
+                        };
+                    })());
                     break;
-                default:
-                    log.log(`query: function call: unknown function: ${name}`, {correlationId, docId, name, args});
             }
         }
-        functionResults = (await Promise.all(functionTasks))
-            .map(({recursionRes}) => recursionRes).filter((v) => v);
+        const rawActions = (await Promise.all(actionTasks))
+            .filter(({full}) => full);
+        actions = rawActions.map(({full}) => full);
+        formattedActions = rawActions.map(({formatted}) => formatted);
         elapsedFunctionCalls = time.elapsedSecs(startFunctionCalls);
-        if (!functionResults.length) {
-            log.log('query: function call: no viable result; no special action needed',
+        if (!actions.length) {
+            log.log('query: function call: no result; no special action needed',
                 {correlationId, docId});
         }
-        const subroutineResults = functionResults.map(({query, reply}) => ({
-            [MODEL_PROMPT_QUERY_FIELD]: query,
-            [MODEL_PROMPT_REPLY_FIELD]: reply,
-        }));
         updatedPrompt = MODEL_PROMPT(
-            info, search, subroutineHistory, subroutineResults, longTermContext, shortTermContext, query, subroutineQuery);
+            info, search, actionHistory, formattedActions, longTermContext, shortTermContext, query, recursedNote, recursedQuery);
         log.log('query: updated prompt', {correlationId, docId, updatedPrompt});
         const startUpdatedChat = new Date();
         const {content: updatedReply_} = await common.chatWithRetry(
-            correlationId, updatedPrompt, REPLY_TOKEN_COUNT_LIMIT, []);
+            correlationId, updatedPrompt, REPLY_TOKEN_COUNT_LIMIT, null);
         updatedReply = updatedReply_;
         elapsedUpdatedChat = time.elapsedSecs(startUpdatedChat);
         updatedPromptTokenCount = await tokenizer.countTokens(correlationId, updatedPrompt);
@@ -174,14 +198,15 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         correlationId,
         info,
         search,
-        subroutineHistory,
+        actionHistory,
         shortTermContext,
         longTermContext,
         functionCalls,
-        functionResults,
+        actions,
         tokenCounts: {
             query: queryTokenCount,
-            subroutineQuery: subroutineQueryTokenCount,
+            recursedNote: recursedNoteTokenCount,
+            recursedQuery: recursedQueryTokenCount,
             info: infoTokenCount,
             search: searchTokenCount,
             prelimPrompt: prelimPromptTokenCount,
@@ -195,7 +220,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
             elapsedUpdatedChat,
         },
     };
-    if (subroutineQuery) {
+    if (recursedQuery) {
         return {
             reply,
             ...extra,
@@ -207,9 +232,16 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         {scheduledImagination},
     ] = await Promise.all([
         (async () => {
-            for (const {query, reply} of functionResults) {
-                await memory.addSubroutine(correlationId, docId, {
-                    [common.QUERY_FIELD]: query,
+            for (const {
+                [MODEL_PROMPT_TYPE_FIELD]: type,
+                [MODEL_PROMPT_RECURSED_NOTE_FIELD]: recursedNote,
+                [MODEL_PROMPT_RECURSED_QUERY_FIELD]: recursedQuery,
+                [MODEL_PROMPT_REPLY_FIELD]: reply,
+            } of formattedActions) {
+                await memory.addAction(correlationId, docId, {
+                    [common.TYPE_FIELD]: type,
+                    [common.RECURSED_NOTE_FIELD]: recursedNote,
+                    [common.RECURSED_QUERY_FIELD]: recursedQuery,
                     [common.REPLY_FIELD]: reply,
                 }, {correlationId});
             }
@@ -240,33 +272,38 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
     };
 });
 
-const getQueryTokenCounts = async (correlationId, docId, query, subroutineQuery) => {
+const getTokenCounts = async (correlationId, docId, query, recursedNote, recursedQuery) => {
     let queryTokenCount = 0;
-    let subroutineQueryTokenCount = 0;
-    if (!subroutineQuery) {
+    let recursedNoteTokenCount = 0;
+    let recursedQueryTokenCount = 0;
+    if (!recursedQuery) {
         queryTokenCount = await tokenizer.countTokens(correlationId, query);
         log.log('query: query token count', {correlationId, docId, queryTokenCount});
         if (queryTokenCount > QUERY_TOKEN_COUNT_LIMIT) {
-            throw new Error(`query: query token count exceeds limit of ${QUERY_TOKEN_COUNT_LIMIT}: ${queryTokenCount}`);
+            throw new Error(`query: query token count exceeds limit: ${queryTokenCount} > ${QUERY_TOKEN_COUNT_LIMIT}`);
         }
     } else {
-        // assume query is already ok
-        subroutineQueryTokenCount = await tokenizer.countTokens(correlationId, subroutineQuery);
-        log.log('query: subroutine query token count', {correlationId, docId, subroutineQueryTokenCount});
-        if (subroutineQueryTokenCount > SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT) {
-            throw new Error(`query: subroutine query token count exceeds limit of ${SUBROUTINE_QUERY_TOKEN_COUNT_LIMIT}: ${subroutineQueryTokenCount}`);
+        // assume query is ok
+        recursedNoteTokenCount = await tokenizer.countTokens(correlationId, recursedNote);
+        recursedQueryTokenCount = await tokenizer.countTokens(correlationId, recursedQuery);
+        log.log('query: recursed note and query token counts',
+            {correlationId, docId, recursedNoteTokenCount, recursedQueryTokenCount});
+        if (recursedNoteTokenCount > RECURSED_NOTE_TOKEN_COUNT_LIMIT
+            || recursedQueryTokenCount > RECURSED_QUERY_TOKEN_COUNT_LIMIT) {
+            throw new Error(`query: recursed note or query token count exceeds limit:` +
+                ` ${recursedNoteTokenCount} > ${RECURSED_NOTE_TOKEN_COUNT_LIMIT} or ${recursedQueryTokenCount} > ${RECURSED_QUERY_TOKEN_COUNT_LIMIT}`);
         }
     }
-    return {queryTokenCount, subroutineQueryTokenCount};
+    return {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getInfo = async (correlationId, docId, query, subroutineQuery) => {
+const getInfo = async (correlationId, docId, query, recursedQuery) => {
     let info = '';
     let infoTokenCount = 0;
     // NB: do not do at top level; it overly influences GPT
-    if (subroutineQuery) {
+    if (recursedQuery) {
         try {
-            const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, subroutineQuery);
+            const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, recursedQuery);
             if (rawInfo.length) {
                 const {truncated, tokenCount} = await tokenizer.truncate(
                     correlationId, JSON.stringify(rawInfo), INFO_TRUNCATION_TOKEN_COUNT);
@@ -275,20 +312,20 @@ const getInfo = async (correlationId, docId, query, subroutineQuery) => {
             }
         } catch (e) {
             log.log('query: wolfram alpha query failed; continue since it is not critical',
-                {correlationId, docId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
+                {correlationId, docId, query, recursedQuery, error: e.message || '', stack: e.stack || ''});
         }
         log.log('query: info', {correlationId, docId, info, infoTokenCount});
     }
     return {info, infoTokenCount};
 };
 
-const getSearch = async (correlationId, docId, query, subroutineQuery) => {
+const getSearch = async (correlationId, docId, query, recursedQuery) => {
     let search = '';
     let searchTokenCount = 0;
     // NB: do not do at top level; it overly influences GPT
-    if (subroutineQuery) {
+    if (recursedQuery) {
         try {
-            const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, subroutineQuery);
+            const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQuery);
             if (rawSearch) {
                 const {truncated, tokenCount} = await tokenizer.truncate(
                     correlationId, JSON.stringify(rawSearch), SEARCH_TRUNCATION_TOKEN_COUNT);
@@ -297,24 +334,29 @@ const getSearch = async (correlationId, docId, query, subroutineQuery) => {
             }
         } catch (e) {
             log.log('query: serp search failed; continue since it is not critical',
-                {correlationId, docId, query, subroutineQuery, error: e.message || '', stack: e.stack || ''});
+                {correlationId, docId, query, recursedQuery, error: e.message || '', stack: e.stack || ''});
         }
         log.log('query: search', {correlationId, docId, search, searchTokenCount});
     }
     return {search, searchTokenCount};
 };
 
-const getSubroutineHistory = async (correlationId, docId) => {
-    const rawSubroutineHistory = await memory.getSubroutines(correlationId, docId, SUBROUTINE_HISTORY_COUNT);
-    const subroutineHistory = rawSubroutineHistory.map(
+const getActionHistory = async (correlationId, docId) => {
+    const rawActionHistory = await memory.getActions(correlationId, docId, ACTION_HISTORY_COUNT);
+    const actionHistory = rawActionHistory.map(
         ({
-             [common.QUERY_FIELD]: query,
+             [common.TYPE_FIELD]: type,
+             [common.RECURSED_NOTE_FIELD]: recursedNote,
+             [common.RECURSED_QUERY_FIELD]: recursedQuery,
              [common.REPLY_FIELD]: reply,
          }) => ({
-            [MODEL_PROMPT_QUERY_FIELD]: query,
+            [MODEL_PROMPT_TYPE_FIELD]: type,
+            [MODEL_PROMPT_RECURSED_NOTE_FIELD]: recursedNote,
+            [MODEL_PROMPT_RECURSED_QUERY_FIELD]: recursedQuery,
             [MODEL_PROMPT_REPLY_FIELD]: reply,
         }));
-    return {subroutineHistory};
+    log.log('query: action history', {correlationId, docId, actionHistory});
+    return {actionHistory};
 };
 
 const getShortTermContext = async (correlationId, docId, start, queryEmbedding) => {
@@ -372,8 +414,17 @@ const getLongTermContext = async (correlationId, docId, queryEmbedding) => {
     return {longTermContext};
 };
 
-const getRecursionRes = async (correlationId, docId, query, recursedCorrelationId, recursedQuery, updatedForbiddenRecursedQueries) => {
+const thoughtsAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack) => {
+    // NB: ancestor can only repeat for a top-level call to prevent infinite recursion
+    if (!(recursedNextQueryStack.length === 1 || !recursedNextQueryStack.includes(recursedNextQuery))) {
+        log.log(`query: action: thoughts: query is forbidden`,
+            {correlationId, docId, recursedNextQuery, recursedNextQueryStack});
+        return {data: null};
+    }
     const {userId, sessionId} = common.DOC_ID.parse(docId);
+    const recursedCorrelationId = uuid.v4();
+    log.log(`query: action: thoughts: correlation id`,
+        {correlationId, docId, recursedNextQuery, recursedCorrelationId});
     try {
         const resp = await fetch_.withTimeout(QUERY_INTERNAL_URL, {
             method: 'POST',
@@ -384,26 +435,23 @@ const getRecursionRes = async (correlationId, docId, query, recursedCorrelationI
             },
             body: JSON.stringify({
                 userId, sessionId, query,
-                subroutineQuery: recursedQuery, forbiddenRecursedQueries: updatedForbiddenRecursedQueries,
+                recursedNote: recursedNextNote, recursedQuery: recursedNextQuery,
+                recursedQueryStack: recursedNextQueryStack,
             }),
         }, RECURSION_TIMEOUT);
         if (!resp.ok) {
-            throw new Error(`query: recursion: api error, status: ${resp.status}`);
+            throw new Error(`query: action: thoughts: api error, status: ${resp.status}`);
         }
         const data = await resp.json();
-        const recursionRes = {
-            query: recursedQuery,
-            ...data,
-        };
-        log.log(`query: recursion: result`,
-            {correlationId, docId, recursedQuery, recursedCorrelationId});
-        return {recursionRes};
+        log.log(`query: action: thoughts: result`,
+            {correlationId, docId, recursedNextQuery, recursedCorrelationId});
+        return {data};
     } catch (e) {
-        log.log(`query: recursion: failed`, {
-            correlationId, docId, recursedQuery, recursedCorrelationId,
+        log.log(`query: action: thoughts: failed`, {
+            correlationId, docId, recursedNextQuery, recursedCorrelationId,
             error: e.message || '', stack: e.stack || '',
         });
-        return {recursionRes: null};
+        return {data: null};
     }
 };
 
