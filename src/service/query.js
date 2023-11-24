@@ -345,10 +345,12 @@ const getActionHistory = async (correlationId, docId) => {
     const rawActionHistory = await memory.getActions(correlationId, docId, ACTION_HISTORY_COUNT);
     const actionHistory = rawActionHistory.map(
         ({
+             [common.TYPE_FIELD]: type,
              [common.RECURSED_NOTE_FIELD]: recursedNote,
              [common.RECURSED_QUERY_FIELD]: recursedQuery,
              [common.REPLY_FIELD]: reply,
          }) => ({
+            [MODEL_PROMPT_TYPE_FIELD]: type,
             [MODEL_PROMPT_RECURSED_NOTE_FIELD]: recursedNote,
             [MODEL_PROMPT_RECURSED_QUERY_FIELD]: recursedQuery,
             [MODEL_PROMPT_REPLY_FIELD]: reply,
