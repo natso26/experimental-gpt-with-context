@@ -31,7 +31,7 @@ const extract = wrapper.logCorrelationId('repository.scraper.extract', async (co
 });
 
 const readTexts = (node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
+    if (node.nodeType === 3) { // text
         return node.text.trim() || null;
     }
     const texts = node.childNodes.map(readTexts).filter((v) => v);

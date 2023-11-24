@@ -28,6 +28,12 @@ const search = wrapper.logCorrelationId('repository.serp.search', async (correla
     };
 });
 
+const getOrganicLinks = (data) => {
+    const {organic_results: rawOrganicResults} = data;
+    const organicResults = rawOrganicResults || [];
+    return organicResults.map(({link}) => link);
+};
+
 const pruneResp = (data) => {
     if (Array.isArray(data)) {
         return data.map(pruneResp);
@@ -52,4 +58,5 @@ const pruneResp = (data) => {
 
 export default {
     search,
+    getOrganicLinks,
 };
