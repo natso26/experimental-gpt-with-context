@@ -11,10 +11,10 @@ Sequence of ``query`` and ``reply`` pairs. Internal flow:
 
 .. code-block:: none
 
-              knowledge --\
-                           |
-               /--+        |
-              v   |        v
+   knowledge
+   |
+   |           /--+
+   v          v   |
    action <-> (query, reply) <-> introspection
               ^            ^     |
               |      /-----+------
