@@ -63,7 +63,7 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
         const prompt = MODEL_PROMPT(context);
         log.log('imagine: prompt', {correlationId, docId, prompt});
         const startChat = new Date();
-        const {content: imagination} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
+        const {content: imagination} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, null);
         const elapsedChat = time.elapsedSecs(startChat);
         const {embedding: imaginationEmbedding} = await common.embedWithRetry(correlationId, imagination);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);

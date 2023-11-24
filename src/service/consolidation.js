@@ -21,7 +21,7 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
     const docId = common.DOC_ID.from(userId, sessionId);
     const rawConsolidationRes = await memory.consolidate(correlationId, docId, async (lvl, raw) => {
         const start = new Date();
-        // NB: strangely, in order of effectiveness: {text: summary} > summary > {summary}
+        // NB: {text: summary} is more effective than {summary}
         const context = lvl ? raw.map((
             {
                 [common.SUMMARY_FIELD]: summary,
@@ -42,7 +42,7 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
         const prompt = MODEL_PROMPT(context);
         log.log('consolidate: prompt', {correlationId, docId, lvl, prompt});
         const startChat = new Date();
-        const {content: summary} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, []);
+        const {content: summary} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, null);
         const elapsedChat = time.elapsedSecs(startChat);
         const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);

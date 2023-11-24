@@ -9,13 +9,7 @@ const MODEL = 'gpt-4-1106-preview';
 const TOP_P = .001;
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
 
-const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlationId, content, maxTokens, functions) => {
-    const toolsInfo = !functions.length ? {} : {
-        tools: functions.map((f) => ({
-            type: 'function',
-            function: f,
-        })),
-    };
+const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlationId, content, maxTokens, fn) => {
     const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -24,15 +18,22 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
         },
         body: JSON.stringify({
             model: MODEL,
-            // NB: we take the approach of foregoing the "chat" capabilities and interpret
-            // all input as "system message"
+            // NB: forego "chat" approach in favor of single "system message"
             messages: [
                 {
                     role: 'system',
                     content,
                 },
             ],
-            ...toolsInfo,
+            // NB: forego more than one function
+            ...(!fn ? {} : {
+                tools: [
+                    {
+                        type: 'function',
+                        function: fn,
+                    },
+                ],
+            }),
             temperature: 1,
             max_tokens: maxTokens,
             top_p: TOP_P,

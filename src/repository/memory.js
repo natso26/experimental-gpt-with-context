@@ -8,7 +8,7 @@ const SCHEDULED_IMAGINATION_FIELD = 'scheduledImagination';
 const ELT_COLLECTION = 'elts';
 const CONSOLIDATION_COLLECTION = (lvl) => `${lvl}-consolidations`;
 const IMAGINATION_COLLECTION = 'imaginations';
-const SUBROUTINE_COLLECTION = 'subroutines';
+const ACTION_COLLECTION = 'actions';
 const INDEX_FIELD = 'index';
 const TIMESTAMP_FIELD = 'timestamp';
 const IS_INTERNAL_FIELD = 'isInternal';
@@ -44,9 +44,9 @@ const addImagination = wrapper.logCorrelationId('repository.memory.addImaginatio
     });
 });
 
-const addSubroutine = wrapper.logCorrelationId('repository.memory.addSubroutine', async (correlationId, docId, elt, extra) => {
-    const subroutinesColl = coll.doc(docId).collection(SUBROUTINE_COLLECTION);
-    return await doAdd(subroutinesColl, {
+const addAction = wrapper.logCorrelationId('repository.memory.addAction', async (correlationId, docId, elt, extra) => {
+    const actionsColl = coll.doc(docId).collection(ACTION_COLLECTION);
+    return await doAdd(actionsColl, {
         [ELT_FIELD]: elt,
         [EXTRA_FIELD]: extra,
     });
@@ -85,8 +85,8 @@ const getHistory = wrapper.logCorrelationId('repository.memory.getHistory', asyn
     return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
 });
 
-const getSubroutines = wrapper.logCorrelationId('repository.memory.getSubroutines', async (correlationId, docId, numResults) => {
-    const snapshot = await coll.doc(docId).collection(SUBROUTINE_COLLECTION)
+const getActions = wrapper.logCorrelationId('repository.memory.getActions', async (correlationId, docId, numResults) => {
+    const snapshot = await coll.doc(docId).collection(ACTION_COLLECTION)
         .select(INDEX_FIELD, ELT_FIELD).orderBy(INDEX_FIELD, 'desc').limit(numResults).get();
     const data = snapshot.docs.map(doc => doc.data());
     return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
@@ -216,10 +216,10 @@ const imagine = wrapper.logCorrelationId('repository.memory.imagine', async (cor
 export default {
     add,
     addImagination,
-    addSubroutine,
+    addAction,
     getLatest,
     getHistory,
-    getSubroutines,
+    getActions,
     shortTermSearch,
     longTermSearch,
     consolidate,
