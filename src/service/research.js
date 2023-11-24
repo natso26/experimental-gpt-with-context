@@ -112,9 +112,9 @@ const getAnswer = async (correlationId, docId, recursedNote, recursedQuery, url)
                 correlationId, JSON.stringify(rawInput), INPUT_TRUNCATION_TOKEN_COUNT);
             input = truncated;
             inputTokenCount = Math.min(tokenCount, INPUT_TRUNCATION_TOKEN_COUNT);
-            log.log('research: input', {correlationId, docId, url, input, inputTokenCount});
+            log.log('research: get answer: input', {correlationId, docId, url, input, inputTokenCount});
             const answerPrompt = MODEL_ANSWER_PROMPT(input, recursedNote, recursedQuery);
-            log.log('research: answer prompt', {correlationId, docId, url, answerPrompt});
+            log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
             const {content: answer_} = await common.chatWithRetry(
                 correlationId, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null);
             answer = answer_;
@@ -122,7 +122,7 @@ const getAnswer = async (correlationId, docId, recursedNote, recursedQuery, url)
             answerTokenCount = await tokenizer.countTokens(correlationId, answer);
         }
     } catch (e) {
-        log.log('research: get answer from url failed; continue still',
+        log.log('research: get answer: failed; continue still',
             {correlationId, docId, recursedNote, recursedQuery, url, error: e.message || '', stack: e.stack || ''});
     }
     return {answer, input, inputTokenCount, answerPromptTokenCount, answerTokenCount};
