@@ -35,7 +35,14 @@ const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPH
 const SERP_SEARCH_RETRY_COUNT = strictParse.int(process.env.SERP_SEARCH_REPOSITORY_RETRY_COUNT);
 const SCRAPER_EXTRACT_RETRY_COUNT = strictParse.int(process.env.SCRAPER_EXTRACT_REPOSITORY_RETRY_COUNT);
 
-const cosineSimilarity = (a, b) => a.map((e, i) => e * b[i]).reduce((x, y) => x + y);
+// NB: abs rather than linear scaling
+const absCosineSimilarity = (a, b) => {
+    let sim = 0;
+    for (let i = 0; i < a.length; i++) {
+        sim += a[i] * b[i];
+    }
+    return Math.abs(sim);
+};
 
 const retry = (fn, onError) => async (...args) => {
     let cnt = 0;
@@ -100,7 +107,7 @@ export default {
     MODEL_PROMPT_EXTERNAL_COMPONENT_MSG,
     MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG,
     MODEL_PROMPT_INTERNAL_COMPONENT_MSG,
-    cosineSimilarity,
+    absCosineSimilarity,
     embedWithRetry,
     chatWithRetry,
     wolframAlphaQueryWithRetry,

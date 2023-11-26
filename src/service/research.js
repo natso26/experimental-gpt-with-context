@@ -17,11 +17,13 @@ const MODEL_CONCLUSION_PROMPT = (answers, recursedNote, recursedQuery) =>
     + `\nanswers: ${JSON.stringify(answers)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`
-    + `\nsynthesize`;
+    + `\naggregate`;
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
 const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
 const URL_COUNT = strictParse.int(process.env.RESEARCH_URL_COUNT);
+const RETRY_NEW_URL_COUNT = strictParse.int(process.env.RESEARCH_RETRY_NEW_URL_COUNT);
 const INPUT_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.RESEARCH_INPUT_TRUNCATION_TOKEN_COUNT);
+const INPUT_MIN_TOKEN_COUNT = strictParse.int(process.env.RESEARCH_INPUT_MIN_TOKEN_COUNT);
 const ANSWER_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_ANSWER_TOKEN_COUNT_LIMIT);
 const CONCLUSION_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_CONCLUSION_TOKEN_COUNT_LIMIT);
 
@@ -32,26 +34,34 @@ const research = wrapper.logCorrelationId('service.research.research', async (co
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, recursedNote, recursedQuery);
     const {data: search} = await common.serpSearchWithRetry(correlationId, recursedQuery);
-    const rawUrls = !search ? [] : serp.getOrganicLinks(search);
-    log.log('research: raw urls', {correlationId, docId, rawUrls});
-    if (!rawUrls.length) {
+    const urls = !search ? [] : serp.getOrganicLinks(search);
+    log.log('research: urls', {correlationId, docId, urls});
+    if (!urls.length) {
         return {
             state: 'no_search_links',
             elapsed: time.elapsedSecs(start),
             reply: null,
         };
     }
-    const urls = rawUrls.slice(0, URL_COUNT);
-    const answerTasks = [];
-    for (const url of urls) {
-        answerTasks.push((async () => {
-            const answer = await getAnswer(correlationId, docId, recursedNote, recursedQuery, url);
-            return {
-                url,
-                ...answer,
-            };
-        })());
-    }
+    const answerTaskCount = Math.min(URL_COUNT, urls.length);
+    let availableI = answerTaskCount;
+    const answerTasks = [...Array(answerTaskCount).keys()].map((i) => (async () => {
+        let currI = i;
+        let answer = {answer: null};
+        for (let j = 0; j <= RETRY_NEW_URL_COUNT; j++) {
+            answer = await getAnswer(correlationId, docId, recursedNote, recursedQuery, urls[currI]);
+            if (answer.answer || availableI >= urls.length || j === RETRY_NEW_URL_COUNT) {
+                break;
+            }
+            log.log('research: no answer; retry new url', {correlationId, docId, oldUrl: urls[currI]});
+            currI = availableI;
+            availableI++;
+        }
+        return {
+            url: urls[currI],
+            ...answer,
+        };
+    })());
     const answers = (await Promise.all(answerTasks))
         .filter(({answer}) => answer);
     const formattedAnswers = answers.map(({answer}) => answer);
@@ -113,16 +123,21 @@ const getAnswer = async (correlationId, docId, recursedNote, recursedQuery, url)
             input = truncated;
             inputTokenCount = Math.min(tokenCount, INPUT_TRUNCATION_TOKEN_COUNT);
             log.log('research: get answer: input', {correlationId, docId, url, input, inputTokenCount});
-            const answerPrompt = MODEL_ANSWER_PROMPT(input, recursedNote, recursedQuery);
-            log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
-            const {content: answer_} = await common.chatWithRetry(
-                correlationId, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null);
-            answer = answer_;
-            answerPromptTokenCount = await tokenizer.countTokens(correlationId, answerPrompt);
-            answerTokenCount = await tokenizer.countTokens(correlationId, answer);
+            if (inputTokenCount < INPUT_MIN_TOKEN_COUNT) {
+                log.log('research: get answer: input has too few tokens; skip',
+                    {correlationId, docId, url, inputTokenCount});
+            } else {
+                const answerPrompt = MODEL_ANSWER_PROMPT(input, recursedNote, recursedQuery);
+                log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
+                const {content: answer_} = await common.chatWithRetry(
+                    correlationId, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null);
+                answer = answer_;
+                answerPromptTokenCount = await tokenizer.countTokens(correlationId, answerPrompt);
+                answerTokenCount = await tokenizer.countTokens(correlationId, answer);
+            }
         }
     } catch (e) {
-        log.log('research: get answer: failed; continue still',
+        log.log('research: get answer: failed',
             {correlationId, docId, recursedNote, recursedQuery, url, error: e.message || '', stack: e.stack || ''});
     }
     return {answer, input, inputTokenCount, answerPromptTokenCount, answerTokenCount};
