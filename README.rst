@@ -11,17 +11,17 @@ Sequence of ``query`` and ``reply`` pairs. Internal flow:
 
 .. code-block:: none
 
-   knowledge
-   ^
-   |           /--+
-   v          v   |
-   action <-> (query, reply) <-> introspection
-              ^            ^     |
-              |      /-----+------
-              v     v       \----+
-              summary ---------> imagination
-              ^   |              ^   |
-               \--+               \--+
+   knowledge ------> action
+                          ^
+              /--+        |
+             v   |        v
+             (query, reply) <-> introspection
+             ^            ^     |
+             |      /-----+------
+             v     v       \----+
+             summary ---------> imagination
+             ^   |              ^   |
+              \--+               \--+
 
 
 Mechanism
@@ -41,7 +41,7 @@ Mechanism
 4. Imagination. Thoughts on random selection of related ``summary`` and ``imagination``,
    scheduled in advance after user interaction.
 
-5. Action. Can recursively launch subtasks.
+5. Action. Can launch subtasks including recursion.
 
 6. Knowledge. Query Wolfram|Alpha and Google search engine results pages.
 
@@ -52,7 +52,7 @@ Engineering
 -----------
 
 - Google Cloud Run, Firestore.
+- Security by manually added user IDs and secret key.
 - Consolidation, Introspection by HTTP requests to keep Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
-- Security by manually added user IDs and secret key.
 - Frontend of query and history pages; VanillaJS.

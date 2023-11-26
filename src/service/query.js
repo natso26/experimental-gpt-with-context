@@ -24,8 +24,8 @@ const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_IMAGINATION_FIELD = 'imagination';
 const MODEL_PROMPT = (info, search, actionHistory, actions, longTermContext, shortTermContext, query, recursedNote, recursedQuery) =>
     (!recursedQuery ? common.MODEL_PROMPT_EXTERNAL_COMPONENT_MSG : common.MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG)
-    + (!info ? '' : `\ninternal information component: ${info}`)
-    + (!search ? '' : `\ninternal search component: ${search}`)
+    + (!info ? '' : `\ninternal information: ${info}`)
+    + (!search ? '' : `\ninternal search: ${search}`)
     + `\ninternal action history: ${JSON.stringify(actionHistory)}`
     + (!actions.length ? '' : `\ninternal actions: ${JSON.stringify(actions)}`)
     + `\nlong-term context: ${JSON.stringify(longTermContext)}`
@@ -96,17 +96,41 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         {actionHistory},
         {queryEmbedding, shortTermContext, longTermContext},
     ] = await Promise.all([
-        getInfo(correlationId, docId, query, recursedQuery),
-        getSearch(correlationId, docId, query, recursedQuery),
+        // NB: do not do info and search at top level; they overly interfere
+        (async () => {
+            if (!recursedQuery) {
+                return {info: '', infoTokenCount: 0};
+            }
+            return await getInfo(correlationId, docId, recursedQuery);
+        })(),
+        (async () => {
+            if (!recursedQuery) {
+                return {search: '', searchTokenCount: 0};
+            }
+            return await getSearch(correlationId, docId, recursedQuery);
+        })(),
         getActionHistory(correlationId, docId),
         (async () => {
             const {embedding: queryEmbedding} = await common.embedWithRetry(correlationId, query);
+            let recursedQueryEmbedding = null;
+            if (!(!recursedQuery || recursedQuery === query)) {
+                const {embedding: recursedQueryEmbedding_} = await common.embedWithRetry(correlationId, recursedQuery);
+                recursedQueryEmbedding = recursedQueryEmbedding_;
+            }
+            // NB: harmonic mean
+            const doSim = !recursedQueryEmbedding
+                ? (f) => f(queryEmbedding)
+                : (f) => {
+                    const q = f(queryEmbedding);
+                    const rq = f(recursedQueryEmbedding);
+                    return (2 * q * rq) / (q + rq) || 0;
+                };
             const [
                 {shortTermContext},
                 {longTermContext},
             ] = await Promise.all([
-                getShortTermContext(correlationId, docId, start, queryEmbedding),
-                getLongTermContext(correlationId, docId, queryEmbedding),
+                getShortTermContext(correlationId, docId, start, doSim),
+                getLongTermContext(correlationId, docId, doSim),
             ]);
             return {queryEmbedding, shortTermContext, longTermContext};
         })(),
@@ -115,9 +139,8 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         info, search, actionHistory, [], longTermContext, shortTermContext, query, recursedNote, recursedQuery);
     log.log('query: prelim prompt', {correlationId, docId, prelimPrompt});
     const startPrelimChat = new Date();
-    const {content: prelimReply, functionCalls: rawFunctionCalls} = await common.chatWithRetry(
+    const {content: prelimReply, functionCalls} = await common.chatWithRetry(
         correlationId, prelimPrompt, REPLY_TOKEN_COUNT_LIMIT, MODEL_FUNCTION);
-    const functionCalls = rawFunctionCalls || [];
     const elapsedPrelimChat = time.elapsedSecs(startPrelimChat);
     let actions = [];
     let formattedActions = [];
@@ -126,7 +149,11 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
     let updatedReply = '';
     let elapsedUpdatedChat = 0;
     let updatedPromptTokenCount = 0;
-    if (!prelimReply) {
+    if (functionCalls.length) {
+        if (prelimReply) {
+            log.log('query: function call: model also replied; discard',
+                {correlationId, docId, prelimReply});
+        }
         log.log('query: function call: function calls', {correlationId, docId, functionCalls});
         const startFunctionCalls = new Date();
         const recursedNextQueryStack = !recursedQuery ? [query] : [...recursedQueryStack, recursedQuery];
@@ -201,7 +228,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         updatedPromptTokenCount = await tokenizer.countTokens(correlationId, updatedPrompt);
     }
     const prelimPromptTokenCount = await tokenizer.countTokens(correlationId, prelimPrompt);
-    const reply = prelimReply || updatedReply;
+    const reply = !functionCalls.length ? prelimReply : updatedReply;
     const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
     const elapsed = time.elapsedSecs(start);
     const extra = {
@@ -309,47 +336,41 @@ const getTokenCounts = async (correlationId, docId, query, recursedNote, recurse
     return {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getInfo = async (correlationId, docId, query, recursedQuery) => {
+const getInfo = async (correlationId, docId, recursedQuery) => {
     let info = '';
     let infoTokenCount = 0;
-    // NB: do not do at top level; it overly influences GPT
-    if (recursedQuery) {
-        try {
-            const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, recursedQuery);
-            if (rawInfo.length) {
-                const {truncated, tokenCount} = await tokenizer.truncate(
-                    correlationId, JSON.stringify(rawInfo), INFO_TRUNCATION_TOKEN_COUNT);
-                info = truncated;
-                infoTokenCount = Math.min(tokenCount, INFO_TRUNCATION_TOKEN_COUNT);
-            }
-        } catch (e) {
-            log.log('query: wolfram alpha query failed; continue since it is not critical',
-                {correlationId, docId, query, recursedQuery, error: e.message || '', stack: e.stack || ''});
+    try {
+        const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, recursedQuery);
+        if (rawInfo.length) {
+            const {truncated, tokenCount} = await tokenizer.truncate(
+                correlationId, JSON.stringify(rawInfo), INFO_TRUNCATION_TOKEN_COUNT);
+            info = truncated;
+            infoTokenCount = Math.min(tokenCount, INFO_TRUNCATION_TOKEN_COUNT);
         }
-        log.log('query: info', {correlationId, docId, info, infoTokenCount});
+    } catch (e) {
+        log.log('query: wolfram alpha query failed; continue since it is not critical',
+            {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
     }
+    log.log('query: info', {correlationId, docId, info, infoTokenCount});
     return {info, infoTokenCount};
 };
 
-const getSearch = async (correlationId, docId, query, recursedQuery) => {
+const getSearch = async (correlationId, docId, recursedQuery) => {
     let search = '';
     let searchTokenCount = 0;
-    // NB: do not do at top level; it overly influences GPT
-    if (recursedQuery) {
-        try {
-            const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQuery);
-            if (rawSearch) {
-                const {truncated, tokenCount} = await tokenizer.truncate(
-                    correlationId, JSON.stringify(rawSearch), SEARCH_TRUNCATION_TOKEN_COUNT);
-                search = truncated;
-                searchTokenCount = Math.min(tokenCount, SEARCH_TRUNCATION_TOKEN_COUNT);
-            }
-        } catch (e) {
-            log.log('query: serp search failed; continue since it is not critical',
-                {correlationId, docId, query, recursedQuery, error: e.message || '', stack: e.stack || ''});
+    try {
+        const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQuery);
+        if (rawSearch) {
+            const {truncated, tokenCount} = await tokenizer.truncate(
+                correlationId, JSON.stringify(rawSearch), SEARCH_TRUNCATION_TOKEN_COUNT);
+            search = truncated;
+            searchTokenCount = Math.min(tokenCount, SEARCH_TRUNCATION_TOKEN_COUNT);
         }
-        log.log('query: search', {correlationId, docId, search, searchTokenCount});
+    } catch (e) {
+        log.log('query: serp search failed; continue since it is not critical',
+            {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
     }
+    log.log('query: search', {correlationId, docId, search, searchTokenCount});
     return {search, searchTokenCount};
 };
 
@@ -371,21 +392,21 @@ const getActionHistory = async (correlationId, docId) => {
     return {actionHistory};
 };
 
-const getShortTermContext = async (correlationId, docId, start, queryEmbedding) => {
+const getShortTermContext = async (correlationId, docId, start, doSim) => {
     const rawShortTermContext = await memory.shortTermSearch(correlationId, docId, (elt, i, timestamp) => {
         const ms = start - timestamp;
+        // NB: geometric mean
         const getSim = () => {
             const {
                 [common.QUERY_EMBEDDING_FIELD]: targetQueryEmbedding,
                 [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
                 [common.INTROSPECTION_EMBEDDING_FIELD]: introspectionEmbedding,
             } = elt;
-            if (introspectionEmbedding) {
-                return common.cosineSimilarity(queryEmbedding, introspectionEmbedding);
-            } else {
-                return Math.sqrt(common.cosineSimilarity(queryEmbedding, targetQueryEmbedding)
-                    * common.cosineSimilarity(queryEmbedding, replyEmbedding));
-            }
+            const f = !introspectionEmbedding
+                ? (emb) => Math.sqrt(common.absCosineSimilarity(emb, targetQueryEmbedding)
+                    * common.absCosineSimilarity(emb, replyEmbedding))
+                : (emb) => common.absCosineSimilarity(emb, introspectionEmbedding);
+            return doSim(f);
         };
         return CTX_SCORE(i, ms, getSim);
     }, SHORT_TERM_CONTEXT_COUNT);
@@ -408,10 +429,11 @@ const getShortTermContext = async (correlationId, docId, start, queryEmbedding) 
     return {shortTermContext};
 };
 
-const getLongTermContext = async (correlationId, docId, queryEmbedding) => {
+const getLongTermContext = async (correlationId, docId, doSim) => {
     const rawLongTermContext = await memory.longTermSearch(correlationId, docId, (_, consolidation) => {
         const targetEmbedding = consolidation[common.SUMMARY_EMBEDDING_FIELD] || consolidation[common.IMAGINATION_EMBEDDING_FIELD];
-        return common.cosineSimilarity(queryEmbedding, targetEmbedding);
+        const f = (emb) => common.absCosineSimilarity(emb, targetEmbedding);
+        return doSim(f);
     }, LONG_TERM_CONTEXT_COUNT);
     const longTermContext = rawLongTermContext.map(([{
         [common.SUMMARY_FIELD]: summary,
@@ -427,10 +449,9 @@ const getLongTermContext = async (correlationId, docId, queryEmbedding) => {
 };
 
 const thoughtsAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack) => {
-    // NB: ancestor can only repeat for a top-level call to prevent infinite recursion;
-    //  that case also requires nonempty note
-    if (!(!recursedNextQueryStack.includes(recursedNextQuery) || (recursedNextQueryStack.length === 1 && recursedNextNote))) {
-        log.log('query: action: thoughts: recursed note or query is forbidden',
+    // NB: ancestor can only repeat for a top-level call to prevent infinite recursion
+    if (!(!recursedNextQueryStack.includes(recursedNextQuery) || recursedNextQueryStack.length === 1)) {
+        log.log('query: action: thoughts: recursed query is forbidden',
             {correlationId, docId, recursedNextQuery, recursedNextQueryStack});
         return {reply: null};
     }

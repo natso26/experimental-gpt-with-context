@@ -11,7 +11,7 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT = (context) =>
     common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
     + `\ncontext: ${JSON.stringify(context)}`
-    + `\nthoughts`;
+    + `\nanalyze`;
 const MIN_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MIN_WAIT_TIME_SECS) * 1000;
 const MAX_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MAX_WAIT_TIME_SECS) * 1000;
 const CONTEXT_COUNT = strictParse.int(process.env.INTROSPECTION_CONTEXT_COUNT);

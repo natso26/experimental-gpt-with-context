@@ -6,11 +6,13 @@ import wrapper from '../util/wrapper.js';
 
 const URL = 'https://api.zenrows.com/v1';
 const TIMEOUT = strictParse.int(process.env.ZENROWS_API_TIMEOUT_SECS) * 1000;
+const WAIT = strictParse.int(process.env.ZENROWS_API_WAIT_MS);
 
 const extract = wrapper.logCorrelationId('repository.scraper.extract', async (correlationId, url) => {
     const resp = await fetch_.withTimeout(`${URL}?${new URLSearchParams({
         apikey: common_.SECRETS.ZENROWS_API_KEY,
         js_render: 'true',
+        wait: WAIT.toString(),
         url,
     })}`, {}, TIMEOUT);
     if (!resp.ok) {
