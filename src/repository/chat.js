@@ -45,13 +45,10 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
         throw new Error(`chat completions api error, status: ${resp.status}`);
     }
     const data = await resp.json();
-    const {content: content_, tool_calls} = data.choices[0].message;
-    if (content_) {
-        return {
-            content: content_,
-        };
-    }
-    const functionCalls = tool_calls.map((call) => {
+    const {content: rawContent, tool_calls: rawToolCalls} = data.choices[0].message;
+    const content_ = rawContent || null;
+    const toolCalls = rawToolCalls || [];
+    const functionCalls = toolCalls.map((call) => {
         const {name, arguments: rawArgs} = call.function;
         try {
             const args = JSON.parse(rawArgs);
@@ -68,6 +65,7 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
         }
     });
     return {
+        content: content_,
         functionCalls,
     };
 });

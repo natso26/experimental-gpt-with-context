@@ -21,7 +21,7 @@ const consolidate = wrapper.logCorrelationId('service.consolidation.consolidate'
     const docId = common.DOC_ID.from(userId, sessionId);
     const rawConsolidationRes = await memory.consolidate(correlationId, docId, async (lvl, raw) => {
         const start = new Date();
-        // NB: {text: summary} is more effective than {summary}
+        // NB: {text: summary} is better than {summary}
         const context = lvl ? raw.map((
             {
                 [common.SUMMARY_FIELD]: summary,

@@ -38,7 +38,7 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
             }
             const rand = Math.random();
             const targetEmbedding = consolidation[common.SUMMARY_EMBEDDING_FIELD] || consolidation[common.IMAGINATION_EMBEDDING_FIELD];
-            const sim = common.cosineSimilarity(selectedEmbedding, targetEmbedding);
+            const sim = common.absCosineSimilarity(selectedEmbedding, targetEmbedding);
             return CONTEXT_SCORE(rand, sim);
         }, CONTEXT_COUNT);
         if (!rawContext.length) {
