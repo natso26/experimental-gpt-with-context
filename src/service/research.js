@@ -1,5 +1,6 @@
 import tokenizer from '../repository/tokenizer.js';
 import serp from '../repository/serp.js';
+import memory from '../repository/memory.js';
 import common from './common.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
@@ -18,6 +19,7 @@ const MODEL_CONCLUSION_PROMPT = (answers, recursedNote, recursedQuery) =>
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`
     + `\naggregate`;
+const ACTION_SUBTYPE_ANSWER = 'research/answer';
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
 const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
 const URL_COUNT = strictParse.int(process.env.RESEARCH_URL_COUNT);
@@ -27,9 +29,11 @@ const INPUT_MIN_TOKEN_COUNT = strictParse.int(process.env.RESEARCH_INPUT_MIN_TOK
 const ANSWER_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_ANSWER_TOKEN_COUNT_LIMIT);
 const CONCLUSION_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_CONCLUSION_TOKEN_COUNT_LIMIT);
 
-const research = wrapper.logCorrelationId('service.research.research', async (correlationId, userId, sessionId, recursedNote, recursedQuery) => {
-    log.log('research: parameters', {correlationId, userId, sessionId, recursedNote, recursedQuery});
+const research = wrapper.logCorrelationId('service.research.research', async (correlationId, userId, sessionId, query, recursedNote, recursedQuery, recursedQueryStack) => {
+    log.log('research: parameters',
+        {correlationId, userId, sessionId, query, recursedNote, recursedQuery, recursedQueryStack});
     const docId = common.DOC_ID.from(userId, sessionId);
+    const actionLvl = recursedQueryStack.length;
     const start = new Date();
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, recursedNote, recursedQuery);
@@ -62,6 +66,21 @@ const research = wrapper.logCorrelationId('service.research.research', async (co
             ...answer,
         };
     })());
+    answerTasks.forEach((task) => task.then(async (res) => {
+        const {answer} = res;
+        if (!answer) {
+            return;
+        }
+        await memory.addAction(correlationId, docId, actionLvl, {
+            [common.TYPE_FIELD]: ACTION_SUBTYPE_ANSWER,
+            [common.RECURSED_NOTE_FIELD]: recursedNote || '',
+            [common.RECURSED_QUERY_FIELD]: recursedQuery,
+            [common.REPLY_FIELD]: answer,
+        }, {correlationId}).catch((e) =>
+            log.log('research: add answer failed; continue since it is not critical', {
+                correlationId, docId, actionLvl, error: e.message || '', stack: e.stack || '',
+            }));
+    }));
     const answers = (await Promise.all(answerTasks))
         .filter(({answer}) => answer);
     const formattedAnswers = answers.map(({answer}) => answer);
