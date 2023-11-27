@@ -11,17 +11,16 @@ Sequence of ``query`` and ``reply`` pairs. Internal flow:
 
 .. code-block:: none
 
-   knowledge ------> action
-                          ^
-              /--+        |
-             v   |        v
-             (query, reply) <-> introspection
-             ^            ^     |
-             |      /-----+------
-             v     v       \----+
-             summary ---------> imagination
-             ^   |              ^   |
-              \--+               \--+
+   knowledge
+   |                     +--\
+   v                    |    v
+   [(query, reply) <-> action] <-> introspection
+   ^                         ^     |
+   |      /------------------+------
+   v     v                    \----+
+   summary ----------------------> imagination
+     |   ^                               |   ^
+     +--/                                +--/
 
 
 Mechanism
@@ -53,6 +52,6 @@ Engineering
 
 - Google Cloud Run, Firestore.
 - Security by manually added user IDs and secret key.
-- Consolidation, Introspection by HTTP requests to keep Cloud Run awake.
+- Consolidation, introspection by HTTP requests to keep Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
 - Frontend of query and history pages; VanillaJS.

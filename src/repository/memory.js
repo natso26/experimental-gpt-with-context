@@ -12,6 +12,7 @@ const ACTION_COLLECTION = 'actions';
 const INDEX_FIELD = 'index';
 const TIMESTAMP_FIELD = 'timestamp';
 const IS_INTERNAL_FIELD = 'isInternal';
+const LVL_FIELD = 'lvl';
 const ELT_FIELD = 'elt';
 const CONSOLIDATION_FIELD = 'consolidation';
 const EXTRA_FIELD = 'extra';
@@ -44,9 +45,10 @@ const addImagination = wrapper.logCorrelationId('repository.memory.addImaginatio
     });
 });
 
-const addAction = wrapper.logCorrelationId('repository.memory.addAction', async (correlationId, docId, elt, extra) => {
+const addAction = wrapper.logCorrelationId('repository.memory.addAction', async (correlationId, docId, lvl, elt, extra) => {
     const actionsColl = coll.doc(docId).collection(ACTION_COLLECTION);
     return await doAdd(actionsColl, {
+        [LVL_FIELD]: lvl,
         [ELT_FIELD]: elt,
         [EXTRA_FIELD]: extra,
     });
@@ -85,9 +87,11 @@ const getHistory = wrapper.logCorrelationId('repository.memory.getHistory', asyn
     return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
 });
 
-const getActions = wrapper.logCorrelationId('repository.memory.getActions', async (correlationId, docId, numResults) => {
+const getActions = wrapper.logCorrelationId('repository.memory.getActions', async (correlationId, docId, lvl, numResults) => {
     const snapshot = await coll.doc(docId).collection(ACTION_COLLECTION)
-        .select(INDEX_FIELD, ELT_FIELD).orderBy(INDEX_FIELD, 'desc').limit(numResults).get();
+        .select(INDEX_FIELD, LVL_FIELD, ELT_FIELD)
+        .where(LVL_FIELD, '==', lvl).orderBy(LVL_FIELD)
+        .orderBy(INDEX_FIELD, 'desc').limit(numResults).get();
     const data = snapshot.docs.map(doc => doc.data());
     return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
 });
