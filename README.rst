@@ -1,5 +1,5 @@
-Intelligentia Experimentalis
-============================
+Experimental Intelligence
+=========================
 
 GPT in the machine.
 
