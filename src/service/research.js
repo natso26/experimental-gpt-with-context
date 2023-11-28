@@ -7,15 +7,17 @@ import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 import time from "../util/time.js";
 
-const MODEL_ANSWER_PROMPT = (input, recursedNote, recursedQuery) =>
+const MODEL_ANSWER_PROMPT = (input, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
     + `\ninput: ${input}`
+    + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`
     + `\nsynthesize`;
-const MODEL_CONCLUSION_PROMPT = (answers, recursedNote, recursedQuery) =>
+const MODEL_CONCLUSION_PROMPT = (answers, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
     + `\nanswers: ${JSON.stringify(answers)}`
+    + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`
     + `\naggregate`;
@@ -53,7 +55,7 @@ const research = wrapper.logCorrelationId('service.research.research', async (co
         let currI = i;
         let answer = {answer: null};
         for (let j = 0; j <= RETRY_NEW_URL_COUNT; j++) {
-            answer = await getAnswer(correlationId, docId, recursedNote, recursedQuery, urls[currI]);
+            answer = await getAnswer(correlationId, docId, query, recursedNote, recursedQuery, urls[currI]);
             if (answer.answer || availableI >= urls.length || j === RETRY_NEW_URL_COUNT) {
                 break;
             }
@@ -91,7 +93,7 @@ const research = wrapper.logCorrelationId('service.research.research', async (co
             reply: null,
         };
     }
-    const conclusionPrompt = MODEL_CONCLUSION_PROMPT(formattedAnswers, recursedNote, recursedQuery);
+    const conclusionPrompt = MODEL_CONCLUSION_PROMPT(formattedAnswers, query, recursedNote, recursedQuery);
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
     const {content: conclusion} = await common.chatWithRetry(
         correlationId, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, null);
@@ -127,8 +129,8 @@ const getTokenCounts = async (correlationId, docId, recursedNote, recursedQuery)
     return {recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getAnswer = async (correlationId, docId, recursedNote, recursedQuery, url) => {
-    log.log('research: get answer: parameters', {correlationId, docId, recursedNote, recursedQuery, url});
+const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuery, url) => {
+    log.log('research: get answer: parameters', {correlationId, docId, query, recursedNote, recursedQuery, url});
     let input = '';
     let answer = '';
     let inputTokenCount = 0;
@@ -146,7 +148,7 @@ const getAnswer = async (correlationId, docId, recursedNote, recursedQuery, url)
                 log.log('research: get answer: input has too few tokens; skip',
                     {correlationId, docId, url, inputTokenCount});
             } else {
-                const answerPrompt = MODEL_ANSWER_PROMPT(input, recursedNote, recursedQuery);
+                const answerPrompt = MODEL_ANSWER_PROMPT(input, query, recursedNote, recursedQuery);
                 log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
                 const {content: answer_} = await common.chatWithRetry(
                     correlationId, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null);
@@ -156,8 +158,10 @@ const getAnswer = async (correlationId, docId, recursedNote, recursedQuery, url)
             }
         }
     } catch (e) {
-        log.log('research: get answer: failed',
-            {correlationId, docId, recursedNote, recursedQuery, url, error: e.message || '', stack: e.stack || ''});
+        log.log('research: get answer: failed', {
+            correlationId, docId, query, recursedNote, recursedQuery, url,
+            error: e.message || '', stack: e.stack || '',
+        });
     }
     return {answer, input, inputTokenCount, answerPromptTokenCount, answerTokenCount};
 };
