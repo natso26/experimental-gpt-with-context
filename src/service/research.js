@@ -9,6 +9,7 @@ import time from "../util/time.js";
 
 const MODEL_ANSWER_PROMPT = (input, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
+    + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
     + `\ninput: ${input}`
     + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
@@ -16,6 +17,7 @@ const MODEL_ANSWER_PROMPT = (input, query, recursedNote, recursedQuery) =>
     + `\nsynthesize`;
 const MODEL_CONCLUSION_PROMPT = (answers, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
+    + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
     + `\nanswers: ${JSON.stringify(answers)}`
     + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
@@ -163,7 +165,15 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
             error: e.message || '', stack: e.stack || '',
         });
     }
-    return {answer, input, inputTokenCount, answerPromptTokenCount, answerTokenCount};
+    return {
+        answer,
+        input,
+        tokenCounts: {
+            input: inputTokenCount,
+            answerPrompt: answerPromptTokenCount,
+            answer: answerTokenCount,
+        },
+    };
 };
 
 export default {
