@@ -29,6 +29,7 @@ const IMAGINATION_EMBEDDING_FIELD = 'imaginationEmbedding';
 const MODEL_PROMPT_EXTERNAL_COMPONENT_MSG = 'This is an external component.';
 const MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG = 'This is an intermediate component.';
 const MODEL_PROMPT_INTERNAL_COMPONENT_MSG = 'This is an internal component.';
+const MODEL_PROMPT_FORMATTED_TIME = () => new Date().toISOString();
 const EMBED_RETRY_COUNT = strictParse.int(process.env.EMBED_REPOSITORY_RETRY_COUNT);
 const CHAT_RETRY_COUNT = strictParse.int(process.env.CHAT_REPOSITORY_RETRY_COUNT);
 const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_REPOSITORY_RETRY_COUNT);
@@ -107,6 +108,7 @@ export default {
     MODEL_PROMPT_EXTERNAL_COMPONENT_MSG,
     MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG,
     MODEL_PROMPT_INTERNAL_COMPONENT_MSG,
+    MODEL_PROMPT_FORMATTED_TIME,
     absCosineSimilarity,
     embedWithRetry,
     chatWithRetry,

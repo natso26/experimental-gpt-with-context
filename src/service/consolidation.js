@@ -12,6 +12,7 @@ const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
     common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
+    + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
     + `\ncontext: ${JSON.stringify(context)}`
     + `\nconsolidate`;
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.CONSOLIDATION_TOKEN_COUNT_LIMIT);
