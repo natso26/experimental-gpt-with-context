@@ -138,33 +138,45 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
             return {queryEmbedding, shortTermContext, longTermContext};
         })(),
     ]);
-    const prelimPrompt = MODEL_PROMPT(
-        info, search, actionHistory, [], longTermContext, shortTermContext, query, recursedNote, recursedQuery);
-    log.log('query: prelim prompt', {correlationId, docId, prelimPrompt});
-    const startPrelimChat = new Date();
-    const {content: prelimReply, functionCalls} = await common.chatWithRetry(
-        correlationId, prelimPrompt, REPLY_TOKEN_COUNT_LIMIT, MODEL_FUNCTION);
-    const elapsedPrelimChat = time.elapsedSecs(startPrelimChat);
     let actions = [];
-    let formattedActions = [];
-    let elapsedFunctionCalls = 0;
-    let updatedPrompt = '';
-    let updatedReply = '';
-    let elapsedUpdatedChat = 0;
-    let updatedPromptTokenCount = 0;
-    if (functionCalls.length) {
-        if (prelimReply) {
-            log.log('query: function call: model also replied; discard',
-                {correlationId, docId, prelimReply});
+    let flattenedFormattedActions = [];
+    let prompts = [];
+    let elapsedChats = [];
+    let promptTokenCounts = [];
+    let elapsedFunctionCalls = [];
+    let functionCalls = [];
+    let reply = '';
+    let recursedNextQueryStack = null;
+    let isFinalIter = false;
+    let i = 0;
+    while (true) {
+        const localPrompt = MODEL_PROMPT(
+            info, search, actionHistory, flattenedFormattedActions, longTermContext, shortTermContext, query, recursedNote, recursedQuery);
+        prompts.push(localPrompt)
+        log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
+        const startLocalChat = new Date();
+        const {content: localReply, functionCalls: localFunctionCalls} = await common.chatWithRetry(
+            correlationId, localPrompt, REPLY_TOKEN_COUNT_LIMIT, !isFinalIter ? MODEL_FUNCTION : null);
+        const elapsedLocalChat = time.elapsedSecs(startLocalChat);
+        elapsedChats.push(elapsedLocalChat);
+        const localPromptTokenCount = await tokenizer.countTokens(correlationId, localPrompt);
+        promptTokenCounts.push(localPromptTokenCount);
+        if (!localFunctionCalls.length) {
+            reply = localReply;
+            break;
         }
-        log.log('query: function call: function calls', {correlationId, docId, functionCalls});
-        const startFunctionCalls = new Date();
-        const recursedNextQueryStack = !recursedQuery ? [query] : [...recursedQueryStack, recursedQuery];
-        const actionTasks = [];
-        for (const {name, args} of functionCalls) {
+        if (localReply) {
+            log.log(`query: iter ${i}: function call: model also replied; discard`,
+                {correlationId, docId, i, localReply});
+        }
+        log.log(`query: iter ${i}: function call: function calls`, {correlationId, docId, i, localFunctionCalls});
+        const startLocalFunctionCalls = new Date();
+        recursedNextQueryStack ||= !recursedQuery ? [query] : [...recursedQueryStack, recursedQuery];
+        const localActionTasks = [];
+        for (const {name, args} of localFunctionCalls) {
             if (name !== MODEL_FUNCTION_NAME) {
-                log.log(`query: function call: invalid function: ${name}; continue nevertheless`,
-                    {correlationId, docId, name, args});
+                log.log(`query: iter ${i}: function call: invalid function: ${name}; continue nevertheless`,
+                    {correlationId, docId, i, name, args});
             }
             const {
                 [MODEL_FUNCTION_TYPE_ARG_NAME]: type,
@@ -172,11 +184,16 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
                 [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery,
             } = args;
             if (!(MODEL_FUNCTION_TYPES.includes(type) && recursedNextQuery)) {
-                log.log(`query: function call: invalid args`, {correlationId, docId, args});
+                log.log(`query: iter ${i}: function call: invalid args`, {correlationId, docId, i, args});
+                continue;
+            }
+            if (functionCalls.some(({v: calls}) => calls.some(({args}) =>
+                args[MODEL_FUNCTION_TYPE_ARG_NAME] === type && args[MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME] === recursedNextQuery))) {
+                log.log(`query: iter ${i}: function call: duplicate`, {correlationId, docId, i, args});
                 continue;
             }
             const recursedNextNote = rawRecursedNextNote || null;
-            actionTasks.push((async () => {
+            localActionTasks.push((async () => {
                 let reply = null;
                 let data = null;
                 switch (type) {
@@ -211,7 +228,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
                 };
             })());
         }
-        actionTasks.forEach((task) => task.then(async (res) => {
+        localActionTasks.forEach((task) => task.then(async (res) => {
             const {full, formatted} = res;
             if (!full) {
                 return;
@@ -228,31 +245,26 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
                 [common.RECURSED_QUERY_FIELD]: recursedQuery,
                 [common.REPLY_FIELD]: reply,
             }, {correlationId}).catch((e) =>
-                log.log('query: function call: add action failed; continue since it is not critical', {
-                    correlationId, docId, actionLvl, error: e.message || '', stack: e.stack || '',
+                log.log(`query: iter ${i}: function call: add action failed; continue since it is not critical`, {
+                    correlationId, docId, i, actionLvl, error: e.message || '', stack: e.stack || '',
                 }));
         }));
-        const rawActions = (await Promise.all(actionTasks))
+        const rawLocalActions = (await Promise.all(localActionTasks))
             .filter(({full}) => full);
-        actions = rawActions.map(({full}) => full);
-        formattedActions = rawActions.map(({formatted}) => formatted);
-        elapsedFunctionCalls = time.elapsedSecs(startFunctionCalls);
-        if (!actions.length) {
-            log.log('query: function call: no result',
-                {correlationId, docId});
+        const localActions = rawLocalActions.map(({full}) => full);
+        const localFormattedActions = rawLocalActions.map(({formatted}) => formatted);
+        actions.push({v: localActions});
+        flattenedFormattedActions.push(...localFormattedActions);
+        const elapsedLocalFunctionCalls = time.elapsedSecs(startLocalFunctionCalls);
+        elapsedFunctionCalls.push(elapsedLocalFunctionCalls);
+        functionCalls.push({v: localFunctionCalls});
+        if (!localActions.length) {
+            log.log(`query: iter ${i}: function call: no result`,
+                {correlationId, docId, i});
+            isFinalIter = true;
         }
-        updatedPrompt = MODEL_PROMPT(
-            info, search, actionHistory, formattedActions, longTermContext, shortTermContext, query, recursedNote, recursedQuery);
-        log.log('query: updated prompt', {correlationId, docId, updatedPrompt});
-        const startUpdatedChat = new Date();
-        const {content: updatedReply_} = await common.chatWithRetry(
-            correlationId, updatedPrompt, REPLY_TOKEN_COUNT_LIMIT, null);
-        updatedReply = updatedReply_;
-        elapsedUpdatedChat = time.elapsedSecs(startUpdatedChat);
-        updatedPromptTokenCount = await tokenizer.countTokens(correlationId, updatedPrompt);
+        i++;
     }
-    const prelimPromptTokenCount = await tokenizer.countTokens(correlationId, prelimPrompt);
-    const reply = !functionCalls.length ? prelimReply : updatedReply;
     const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
     const elapsed = time.elapsedSecs(start);
     const extra = {
@@ -270,15 +282,13 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
             recursedQuery: recursedQueryTokenCount,
             info: infoTokenCount,
             search: searchTokenCount,
-            prelimPrompt: prelimPromptTokenCount,
-            updatedPrompt: updatedPromptTokenCount,
+            prompts: promptTokenCounts,
             reply: replyTokenCount,
         },
         timeStats: {
             elapsed,
-            elapsedPrelimChat,
+            elapsedChats,
             elapsedFunctionCalls,
-            elapsedUpdatedChat,
         },
     };
     if (recursedQuery) {
@@ -295,8 +305,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
             const {embedding: replyEmbedding} = await common.embedWithRetry(correlationId, reply);
             const dbExtra = {
                 ...extra,
-                prelimPrompt,
-                updatedPrompt,
+                prompts,
             };
             return await memory.add(correlationId, docId, {
                 [common.QUERY_FIELD]: query,

@@ -165,7 +165,15 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
             error: e.message || '', stack: e.stack || '',
         });
     }
-    return {answer, input, inputTokenCount, answerPromptTokenCount, answerTokenCount};
+    return {
+        answer,
+        input,
+        tokenCounts: {
+            input: inputTokenCount,
+            answerPrompt: answerPromptTokenCount,
+            answer: answerTokenCount,
+        },
+    };
 };
 
 export default {
