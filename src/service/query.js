@@ -24,6 +24,7 @@ const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_IMAGINATION_FIELD = 'imagination';
 const MODEL_PROMPT = (info, search, actionHistory, actions, longTermContext, shortTermContext, query, recursedNote, recursedQuery) =>
     (!recursedQuery ? common.MODEL_PROMPT_EXTERNAL_COMPONENT_MSG : common.MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG)
+    + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
     + (!info ? '' : `\ninternal information: ${info}`)
     + (!search ? '' : `\ninternal search: ${search}`)
     + `\ninternal action history: ${JSON.stringify(actionHistory)}`
