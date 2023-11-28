@@ -58,6 +58,8 @@ const MODEL_FUNCTION = {
 const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_QUERY_TOKEN_COUNT_LIMIT);
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
 const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
+const MAX_QUERY_TOKEN_COUNT_TO_GET_INFO = strictParse.int(process.env.QUERY_MAX_QUERY_TOKEN_COUNT_TO_GET_INFO);
+const MAX_QUERY_TOKEN_COUNT_TO_GET_SEARCH = strictParse.int(process.env.QUERY_MAX_QUERY_TOKEN_COUNT_TO_GET_SEARCH);
 const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_INFO_TRUNCATION_TOKEN_COUNT);
 const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_TRUNCATION_TOKEN_COUNT);
 const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
@@ -97,18 +99,17 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         {actionHistory},
         {queryEmbedding, shortTermContext, longTermContext},
     ] = await Promise.all([
-        // NB: do not do info and search at top level; they overly interfere
         (async () => {
-            if (!recursedQuery) {
+            if (!(recursedQuery || queryTokenCount <= MAX_QUERY_TOKEN_COUNT_TO_GET_INFO)) {
                 return {info: '', infoTokenCount: 0};
             }
-            return await getInfo(correlationId, docId, recursedQuery);
+            return await getInfo(correlationId, docId, recursedQuery || query);
         })(),
         (async () => {
-            if (!recursedQuery) {
+            if (!(recursedQuery || queryTokenCount <= MAX_QUERY_TOKEN_COUNT_TO_GET_SEARCH)) {
                 return {search: '', searchTokenCount: 0};
             }
-            return await getSearch(correlationId, docId, recursedQuery);
+            return await getSearch(correlationId, docId, recursedQuery || query);
         })(),
         getActionHistory(correlationId, docId, actionLvl),
         (async () => {
@@ -342,11 +343,11 @@ const getTokenCounts = async (correlationId, docId, query, recursedNote, recurse
     return {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getInfo = async (correlationId, docId, recursedQuery) => {
+const getInfo = async (correlationId, docId, recursedQueryOrQuery) => {
     let info = '';
     let infoTokenCount = 0;
     try {
-        const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, recursedQuery);
+        const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, recursedQueryOrQuery);
         if (rawInfo.length) {
             const {truncated, tokenCount} = await tokenizer.truncate(
                 correlationId, JSON.stringify(rawInfo), INFO_TRUNCATION_TOKEN_COUNT);
@@ -355,17 +356,17 @@ const getInfo = async (correlationId, docId, recursedQuery) => {
         }
     } catch (e) {
         log.log('query: wolfram alpha query failed; continue since it is not critical',
-            {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
+            {correlationId, docId, recursedQueryOrQuery, error: e.message || '', stack: e.stack || ''});
     }
     log.log('query: info', {correlationId, docId, info, infoTokenCount});
     return {info, infoTokenCount};
 };
 
-const getSearch = async (correlationId, docId, recursedQuery) => {
+const getSearch = async (correlationId, docId, recursedQueryOrQuery) => {
     let search = '';
     let searchTokenCount = 0;
     try {
-        const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQuery);
+        const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQueryOrQuery);
         if (rawSearch) {
             const {truncated, tokenCount} = await tokenizer.truncate(
                 correlationId, JSON.stringify(rawSearch), SEARCH_TRUNCATION_TOKEN_COUNT);
@@ -374,7 +375,7 @@ const getSearch = async (correlationId, docId, recursedQuery) => {
         }
     } catch (e) {
         log.log('query: serp search failed; continue since it is not critical',
-            {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
+            {correlationId, docId, recursedQueryOrQuery, error: e.message || '', stack: e.stack || ''});
     }
     log.log('query: search', {correlationId, docId, search, searchTokenCount});
     return {search, searchTokenCount};
