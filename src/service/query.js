@@ -70,6 +70,7 @@ const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_INFO_TRUNC
 const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_TRUNCATION_TOKEN_COUNT);
 const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
 const MAX_ITERS_WITH_ACTIONS = strictParse.int(process.env.QUERY_MAX_ITERS_WITH_ACTIONS);
+const MAX_ACTION_COUNT = strictParse.int(process.env.QUERY_MAX_ACTION_COUNT);
 const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_COUNT);
 const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
 const CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY);
@@ -156,6 +157,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
     let recursedNextQueryStack = null;
     let isFinalIter = false;
     let i = 0;
+    let actionCount = 0;
     while (true) {
         const localPrompt = MODEL_PROMPT(
             info, search, actionHistory, formattedActionsForPrompt, longTermContext, shortTermContext, query, recursedNote, recursedQuery);
@@ -217,6 +219,11 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
                 log.log(`query: iter ${i}: function call: duplicate`, {correlationId, docId, i, args});
                 continue;
             }
+            if (actionCount >= MAX_ACTION_COUNT) {
+                log.log(`query: iter ${i}: function call: at max actions`, {correlationId, docId, i});
+                continue;
+            }
+            actionCount++;
             localActionTasks.push((async () => {
                 let reply = null;
                 let data = null;
