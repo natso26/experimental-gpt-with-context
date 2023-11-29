@@ -41,16 +41,15 @@ const MODEL_FUNCTION_TYPE_ARG_NAME = 'type';
 const MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME = 'recursedNote';
 const MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME = 'recursedQuery';
 const MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME_IS_POSSIBLE_TYPO = (k) => k.endsWith('Query');
-const MODEL_FUNCTION_TYPE_ASK = 'ask';
+const MODEL_FUNCTION_TYPE_THINK = 'think';
 const MODEL_FUNCTION_TYPE_RESEARCH = 'research';
-const MODEL_FUNCTION_TYPES = [MODEL_FUNCTION_TYPE_ASK, MODEL_FUNCTION_TYPE_RESEARCH];
+const MODEL_FUNCTION_TYPES = [MODEL_FUNCTION_TYPE_THINK, MODEL_FUNCTION_TYPE_RESEARCH];
 const MODEL_FUNCTION = (query, recursedNote, recursedQuery) => ({
     name: MODEL_FUNCTION_NAME,
     description: '',
     parameters: {
         type: 'object',
         properties: {
-            [MODEL_FUNCTION_TYPE_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_TYPES},
             [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {
                 type: 'string',
                 ...(!recursedNote ? {} : {description: `not in: ${JSON.stringify([recursedNote])}`}),
@@ -59,15 +58,14 @@ const MODEL_FUNCTION = (query, recursedNote, recursedQuery) => ({
                 type: 'string',
                 description: `not in: ${JSON.stringify((!recursedQuery || recursedQuery === query) ? [query] : [query, recursedQuery])}`,
             },
+            [MODEL_FUNCTION_TYPE_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_TYPES},
         },
-        required: [MODEL_FUNCTION_TYPE_ARG_NAME, MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME],
+        required: [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME, MODEL_FUNCTION_TYPE_ARG_NAME],
     },
 });
 const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_QUERY_TOKEN_COUNT_LIMIT);
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
 const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
-const MAX_QUERY_TOKEN_COUNT_TO_GET_INFO = strictParse.int(process.env.QUERY_MAX_QUERY_TOKEN_COUNT_TO_GET_INFO);
-const MAX_QUERY_TOKEN_COUNT_TO_GET_SEARCH = strictParse.int(process.env.QUERY_MAX_QUERY_TOKEN_COUNT_TO_GET_SEARCH);
 const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_INFO_TRUNCATION_TOKEN_COUNT);
 const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_TRUNCATION_TOKEN_COUNT);
 const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
@@ -108,17 +106,18 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         {actionHistory},
         {queryEmbedding, shortTermContext, longTermContext},
     ] = await Promise.all([
+        // NB: do info and search only on recursion
         (async () => {
-            if (!(recursedQuery || queryTokenCount <= MAX_QUERY_TOKEN_COUNT_TO_GET_INFO)) {
+            if (!recursedQuery) {
                 return {info: '', infoTokenCount: 0};
             }
-            return await getInfo(correlationId, docId, recursedQuery || query);
+            return await getInfo(correlationId, docId, recursedQuery);
         })(),
         (async () => {
-            if (!(recursedQuery || queryTokenCount <= MAX_QUERY_TOKEN_COUNT_TO_GET_SEARCH)) {
+            if (!recursedQuery) {
                 return {search: '', searchTokenCount: 0};
             }
-            return await getSearch(correlationId, docId, recursedQuery || query);
+            return await getSearch(correlationId, docId, recursedQuery);
         })(),
         getActionHistory(correlationId, docId, actionLvl),
         (async () => {
@@ -222,11 +221,11 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
                 let reply = null;
                 let data = null;
                 switch (type) {
-                    case MODEL_FUNCTION_TYPE_ASK:
-                        const askRes =
-                            await askAction(correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack);
-                        reply = askRes.reply || null;
-                        data = askRes.data || null;
+                    case MODEL_FUNCTION_TYPE_THINK:
+                        const thinkRes =
+                            await thinkAction(correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack);
+                        reply = thinkRes.reply || null;
+                        data = thinkRes.data || null;
                         break;
                     case MODEL_FUNCTION_TYPE_RESEARCH:
                         const researchRes =
@@ -386,11 +385,11 @@ const getTokenCounts = async (correlationId, docId, query, recursedNote, recurse
     return {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getInfo = async (correlationId, docId, recursedQueryOrQuery) => {
+const getInfo = async (correlationId, docId, recursedQuery) => {
     let info = '';
     let infoTokenCount = 0;
     try {
-        const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, recursedQueryOrQuery);
+        const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, recursedQuery);
         if (rawInfo.length) {
             const {truncated, tokenCount} = await tokenizer.truncate(
                 correlationId, JSON.stringify(rawInfo), INFO_TRUNCATION_TOKEN_COUNT);
@@ -399,17 +398,17 @@ const getInfo = async (correlationId, docId, recursedQueryOrQuery) => {
         }
     } catch (e) {
         log.log('query: wolfram alpha query failed; continue since it is not critical',
-            {correlationId, docId, recursedQueryOrQuery, error: e.message || '', stack: e.stack || ''});
+            {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
     }
     log.log('query: info', {correlationId, docId, info, infoTokenCount});
     return {info, infoTokenCount};
 };
 
-const getSearch = async (correlationId, docId, recursedQueryOrQuery) => {
+const getSearch = async (correlationId, docId, recursedQuery) => {
     let search = '';
     let searchTokenCount = 0;
     try {
-        const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQueryOrQuery);
+        const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQuery);
         if (rawSearch) {
             const {truncated, tokenCount} = await tokenizer.truncate(
                 correlationId, JSON.stringify(rawSearch), SEARCH_TRUNCATION_TOKEN_COUNT);
@@ -418,7 +417,7 @@ const getSearch = async (correlationId, docId, recursedQueryOrQuery) => {
         }
     } catch (e) {
         log.log('query: serp search failed; continue since it is not critical',
-            {correlationId, docId, recursedQueryOrQuery, error: e.message || '', stack: e.stack || ''});
+            {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
     }
     log.log('query: search', {correlationId, docId, search, searchTokenCount});
     return {search, searchTokenCount};
@@ -498,16 +497,16 @@ const getLongTermContext = async (correlationId, docId, doSim) => {
     return {longTermContext};
 };
 
-const askAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack) => {
+const thinkAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack) => {
     // NB: prevent infinite recursion
     if (recursedNextQueryStack.includes(recursedNextQuery)) {
-        log.log('query: action: ask: recursed query is duplicate',
+        log.log('query: action: think: recursed query is duplicate',
             {correlationId, docId, recursedNextQuery, recursedNextQueryStack});
         return {reply: null};
     }
     const {userId, sessionId} = common.DOC_ID.parse(docId);
     const recursedCorrelationId = uuid.v4();
-    log.log('query: action: ask: correlation id',
+    log.log('query: action: think: correlation id',
         {correlationId, docId, recursedNextQuery, recursedCorrelationId});
     try {
         const resp = await fetch_.withTimeout(QUERY_INTERNAL_URL, {
@@ -524,15 +523,15 @@ const askAction = async (correlationId, docId, query, recursedNextNote, recursed
             }),
         }, RECURSION_TIMEOUT);
         if (!resp.ok) {
-            throw new Error(`query: action: ask: api error, status: ${resp.status}`);
+            throw new Error(`query: action: think: api error, status: ${resp.status}`);
         }
         const data = await resp.json();
-        log.log('query: action: ask: result',
+        log.log('query: action: think: result',
             {correlationId, docId, recursedNextQuery, recursedCorrelationId});
         const {reply} = data;
         return {reply, data};
     } catch (e) {
-        log.log('query: action: ask: failed', {
+        log.log('query: action: think: failed', {
             correlationId, docId, recursedNextQuery, recursedCorrelationId,
             error: e.message || '', stack: e.stack || '',
         });
