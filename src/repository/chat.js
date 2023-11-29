@@ -42,7 +42,10 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
         }),
     }, TIMEOUT);
     if (!resp.ok) {
-        throw new Error(`chat completions api error, status: ${resp.status}`);
+        const msg = `chat completions api error, status: ${resp.status}`;
+        const body = await fetch_.parseRespBody(resp);
+        log.log(msg, {correlationId, body});
+        throw new Error(msg);
     }
     const data = await resp.json();
     const {content: rawContent, tool_calls: rawToolCalls} = data.choices[0].message;

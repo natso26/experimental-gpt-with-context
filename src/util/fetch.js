@@ -12,6 +12,12 @@ const withTimeout = async (url, options, timeout) => {
     }
 };
 
+const parseRespBody = async (resp) => {
+    const body = await resp.json().catch((_) => resp.text());
+    return body;
+};
+
 export default {
     withTimeout,
+    parseRespBody,
 };

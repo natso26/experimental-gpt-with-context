@@ -1,6 +1,7 @@
 import common_ from '../common.js';
 import fetch_ from '../util/fetch.js';
 import strictParse from '../util/strictParse.js';
+import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
 const URL = 'https://api.wolframalpha.com/v2/query';
@@ -13,7 +14,10 @@ const query = wrapper.logCorrelationId('repository.wolframAlpha.query', async (c
         input: query,
     })}`, {}, TIMEOUT);
     if (!resp.ok) {
-        throw new Error(`wolfram alpha query api error, status: ${resp.status}`);
+        const msg = `wolfram alpha query api error, status: ${resp.status}`;
+        const body = await fetch_.parseRespBody(resp);
+        log.log(msg, {correlationId, body});
+        throw new Error(msg);
     }
     const data = await resp.json();
     const {pods: rawPods} = data.queryresult;

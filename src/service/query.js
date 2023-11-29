@@ -34,28 +34,35 @@ const MODEL_PROMPT = (info, search, actionHistory, actions, longTermContext, sho
     + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     // NB: better to not duplicate in case of recursing to same query
-    + ((!recursedQuery || recursedQuery === query) ? '' : `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`);
+    + ((!recursedQuery || recursedQuery === query) ? '' : `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`)
+    + `\nreply`;
 const MODEL_FUNCTION_NAME = 'act';
 const MODEL_FUNCTION_TYPE_ARG_NAME = 'type';
 const MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME = 'recursedNote';
 const MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME = 'recursedQuery';
-const MODEL_FUNCTION_TYPE_THOUGHTS = 'thoughts';
+const MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME_IS_POSSIBLE_TYPO = (k) => k.endsWith('Query');
+const MODEL_FUNCTION_TYPE_ASK = 'ask';
 const MODEL_FUNCTION_TYPE_RESEARCH = 'research';
-// NB: prioritize research > thoughts
-const MODEL_FUNCTION_TYPES = [MODEL_FUNCTION_TYPE_RESEARCH, MODEL_FUNCTION_TYPE_THOUGHTS];
-const MODEL_FUNCTION = {
+const MODEL_FUNCTION_TYPES = [MODEL_FUNCTION_TYPE_ASK, MODEL_FUNCTION_TYPE_RESEARCH];
+const MODEL_FUNCTION = (query, recursedNote, recursedQuery) => ({
     name: MODEL_FUNCTION_NAME,
     description: '',
     parameters: {
         type: 'object',
         properties: {
             [MODEL_FUNCTION_TYPE_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_TYPES},
-            [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {type: 'string'},
-            [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: {type: 'string'},
+            [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {
+                type: 'string',
+                ...(!recursedNote ? {} : {description: `not in: ${JSON.stringify([recursedNote])}`}),
+            },
+            [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: {
+                type: 'string',
+                description: `not in: ${JSON.stringify((!recursedQuery || recursedQuery === query) ? [query] : [query, recursedQuery])}`,
+            },
         },
         required: [MODEL_FUNCTION_TYPE_ARG_NAME, MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME],
     },
-};
+});
 const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_QUERY_TOKEN_COUNT_LIMIT);
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
 const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
@@ -64,6 +71,7 @@ const MAX_QUERY_TOKEN_COUNT_TO_GET_SEARCH = strictParse.int(process.env.QUERY_MA
 const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_INFO_TRUNCATION_TOKEN_COUNT);
 const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_TRUNCATION_TOKEN_COUNT);
 const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
+const MAX_ITERS_WITH_ACTIONS = strictParse.int(process.env.QUERY_MAX_ITERS_WITH_ACTIONS);
 const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_COUNT);
 const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
 const CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY);
@@ -139,7 +147,7 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         })(),
     ]);
     let actions = [];
-    let flattenedFormattedActions = [];
+    let formattedActionsForPrompt = [];
     let prompts = [];
     let elapsedChats = [];
     let promptTokenCounts = [];
@@ -151,12 +159,12 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
     let i = 0;
     while (true) {
         const localPrompt = MODEL_PROMPT(
-            info, search, actionHistory, flattenedFormattedActions, longTermContext, shortTermContext, query, recursedNote, recursedQuery);
+            info, search, actionHistory, formattedActionsForPrompt, longTermContext, shortTermContext, query, recursedNote, recursedQuery);
         prompts.push(localPrompt)
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
         const startLocalChat = new Date();
         const {content: localReply, functionCalls: localFunctionCalls} = await common.chatWithRetry(
-            correlationId, localPrompt, REPLY_TOKEN_COUNT_LIMIT, !isFinalIter ? MODEL_FUNCTION : null);
+            correlationId, localPrompt, REPLY_TOKEN_COUNT_LIMIT, !isFinalIter ? MODEL_FUNCTION(query, recursedNote, recursedQuery) : null);
         const elapsedLocalChat = time.elapsedSecs(startLocalChat);
         elapsedChats.push(elapsedLocalChat);
         const localPromptTokenCount = await tokenizer.countTokens(correlationId, localPrompt);
@@ -178,12 +186,30 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
                 log.log(`query: iter ${i}: function call: invalid function: ${name}; continue nevertheless`,
                     {correlationId, docId, i, name, args});
             }
-            const {
+            let {
                 [MODEL_FUNCTION_TYPE_ARG_NAME]: type,
                 [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: rawRecursedNextNote,
                 [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery,
             } = args;
-            if (!(MODEL_FUNCTION_TYPES.includes(type) && recursedNextQuery)) {
+            if (type === undefined && MODEL_FUNCTION_TYPES.includes(name)) {
+                type = name;
+                log.log(`query: iter ${i}: function call: use fallback type`,
+                    {correlationId, docId, i, name, args, type});
+            }
+            if (recursedNextQuery === undefined) {
+                for (const [k, v] of Object.entries(args)) {
+                    if (MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME_IS_POSSIBLE_TYPO(k)) {
+                        recursedNextQuery = v;
+                        log.log(`query: iter ${i}: function call: use fallback recursed query`,
+                            {correlationId, docId, i, name, args, recursedNextQuery});
+                        break;
+                    }
+                }
+            }
+            const recursedNextNote = rawRecursedNextNote || null;
+            if (!MODEL_FUNCTION_TYPES.includes(type)
+                || (recursedNote && recursedNextNote === recursedNote)
+                || (!recursedNextQuery || recursedNextQuery === query || recursedNextQuery === recursedQuery)) {
                 log.log(`query: iter ${i}: function call: invalid args`, {correlationId, docId, i, args});
                 continue;
             }
@@ -192,22 +218,21 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
                 log.log(`query: iter ${i}: function call: duplicate`, {correlationId, docId, i, args});
                 continue;
             }
-            const recursedNextNote = rawRecursedNextNote || null;
             localActionTasks.push((async () => {
                 let reply = null;
                 let data = null;
                 switch (type) {
-                    case MODEL_FUNCTION_TYPE_THOUGHTS:
-                        const ta =
-                            await thoughtsAction(correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack);
-                        reply = ta.reply || null;
-                        data = ta.data || null;
+                    case MODEL_FUNCTION_TYPE_ASK:
+                        const askRes =
+                            await askAction(correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack);
+                        reply = askRes.reply || null;
+                        data = askRes.data || null;
                         break;
                     case MODEL_FUNCTION_TYPE_RESEARCH:
-                        const ra =
+                        const researchRes =
                             await researchAction(correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack);
-                        reply = ra.reply || null;
-                        data = ra.data || null;
+                        reply = researchRes.reply || null;
+                        data = researchRes.data || null;
                         break;
                 }
                 return !reply ? {
@@ -252,14 +277,22 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
         const rawLocalActions = (await Promise.all(localActionTasks))
             .filter(({full}) => full);
         const localActions = rawLocalActions.map(({full}) => full);
-        const localFormattedActions = rawLocalActions.map(({formatted}) => formatted);
+        // NB: exclude some fields to not overly influence further actions
+        const localFormattedActionsForPrompt = rawLocalActions.map(({formatted}) => formatted)
+            .map(({[MODEL_PROMPT_TYPE_FIELD]: type, [MODEL_PROMPT_REPLY_FIELD]: reply}) =>
+                ({[MODEL_PROMPT_TYPE_FIELD]: type, [MODEL_PROMPT_REPLY_FIELD]: reply}));
         actions.push({v: localActions});
-        flattenedFormattedActions.push(...localFormattedActions);
+        formattedActionsForPrompt.push(...localFormattedActionsForPrompt);
         const elapsedLocalFunctionCalls = time.elapsedSecs(startLocalFunctionCalls);
         elapsedFunctionCalls.push(elapsedLocalFunctionCalls);
         functionCalls.push({v: localFunctionCalls});
         if (!localActions.length) {
             log.log(`query: iter ${i}: function call: no result`,
+                {correlationId, docId, i});
+            isFinalIter = true;
+        }
+        if (i >= MAX_ITERS_WITH_ACTIONS - 1) {
+            log.log(`query: iter ${i}: function call: at max iters`,
                 {correlationId, docId, i});
             isFinalIter = true;
         }
@@ -465,16 +498,16 @@ const getLongTermContext = async (correlationId, docId, doSim) => {
     return {longTermContext};
 };
 
-const thoughtsAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack) => {
-    // NB: ancestor can only repeat for a top-level call to prevent infinite recursion
-    if (!(!recursedNextQueryStack.includes(recursedNextQuery) || recursedNextQueryStack.length === 1)) {
-        log.log('query: action: thoughts: recursed query is forbidden',
+const askAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, recursedNextQueryStack) => {
+    // NB: prevent infinite recursion
+    if (recursedNextQueryStack.includes(recursedNextQuery)) {
+        log.log('query: action: ask: recursed query is duplicate',
             {correlationId, docId, recursedNextQuery, recursedNextQueryStack});
         return {reply: null};
     }
     const {userId, sessionId} = common.DOC_ID.parse(docId);
     const recursedCorrelationId = uuid.v4();
-    log.log('query: action: thoughts: correlation id',
+    log.log('query: action: ask: correlation id',
         {correlationId, docId, recursedNextQuery, recursedCorrelationId});
     try {
         const resp = await fetch_.withTimeout(QUERY_INTERNAL_URL, {
@@ -491,15 +524,15 @@ const thoughtsAction = async (correlationId, docId, query, recursedNextNote, rec
             }),
         }, RECURSION_TIMEOUT);
         if (!resp.ok) {
-            throw new Error(`query: action: thoughts: api error, status: ${resp.status}`);
+            throw new Error(`query: action: ask: api error, status: ${resp.status}`);
         }
         const data = await resp.json();
-        log.log('query: action: thoughts: result',
+        log.log('query: action: ask: result',
             {correlationId, docId, recursedNextQuery, recursedCorrelationId});
         const {reply} = data;
         return {reply, data};
     } catch (e) {
-        log.log('query: action: thoughts: failed', {
+        log.log('query: action: ask: failed', {
             correlationId, docId, recursedNextQuery, recursedCorrelationId,
             error: e.message || '', stack: e.stack || '',
         });
