@@ -216,7 +216,16 @@ const query = wrapper.logCorrelationId('service.query.query', async (correlation
             }
             if (functionCalls.some(({v: calls}) => calls.some(({args}) =>
                 args[MODEL_FUNCTION_TYPE_ARG_NAME] === type && args[MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME] === recursedNextQuery))) {
-                log.log(`query: iter ${i}: function call: duplicate`, {correlationId, docId, i, args});
+                log.log(`query: iter ${i}: function call: duplicate with previous iters`,
+                    {correlationId, docId, i, args});
+                continue;
+            }
+            if (actionHistory.some((action) =>
+                action[MODEL_PROMPT_TYPE_FIELD] === type
+                && (!recursedNextNote && action[MODEL_PROMPT_RECURSED_NOTE_FIELD] === recursedNextNote)
+                && action[MODEL_PROMPT_RECURSED_QUERY_FIELD] === recursedNextQuery)) {
+                log.log(`query: iter ${i}: function call: duplicate with action history`,
+                    {correlationId, docId, i, args});
                 continue;
             }
             if (actionCount >= MAX_ACTION_COUNT) {
