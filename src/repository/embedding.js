@@ -1,6 +1,7 @@
 import common_ from '../common.js';
 import fetch_ from '../util/fetch.js';
 import strictParse from '../util/strictParse.js';
+import log from '../util/log.js';
 import wrapper from '../util/wrapper.js';
 
 const URL = 'https://api.openai.com/v1/embeddings';
@@ -20,7 +21,10 @@ const embed = wrapper.logCorrelationId('repository.embedding.embed', async (corr
         }),
     }, TIMEOUT);
     if (!resp.ok) {
-        throw new Error(`embeddings api error, status: ${resp.status}`);
+        const msg = `embeddings api error, status: ${resp.status}`;
+        const body = await fetch_.parseRespBody(resp);
+        log.log(msg, {correlationId, body});
+        throw new Error(msg);
     }
     const data = await resp.json();
     const {embedding} = data.data[0];
