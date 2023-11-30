@@ -1,7 +1,7 @@
 import firestore from '@google-cloud/firestore';
-import strictParse from '../util/strictParse.js';
-import log from '../util/log.js';
-import wrapper from '../util/wrapper.js';
+import strictParse from '../../util/strictParse.js';
+import log from '../../util/log.js';
+import wrapper from '../../util/wrapper.js';
 
 const TOP_LEVEL_COLLECTION = 'memory';
 const SCHEDULED_IMAGINATION_FIELD = 'scheduledImagination';
@@ -28,7 +28,7 @@ const HIGHER_CONSOLIDATION_FREQ = strictParse.int(process.env.MEMORY_HIGHER_CONS
 const db = new firestore.Firestore();
 const coll = db.collection(TOP_LEVEL_COLLECTION);
 
-const add = wrapper.logCorrelationId('repository.memory.add', async (correlationId, docId, elt, extra, isInternal) => {
+const add = wrapper.logCorrelationId('repository.db.memory.add', async (correlationId, docId, elt, extra, isInternal) => {
     const eltsColl = coll.doc(docId).collection(ELT_COLLECTION);
     return await doAdd(eltsColl, {
         [IS_INTERNAL_FIELD]: isInternal,
@@ -37,7 +37,7 @@ const add = wrapper.logCorrelationId('repository.memory.add', async (correlation
     });
 });
 
-const addImagination = wrapper.logCorrelationId('repository.memory.addImagination', async (correlationId, docId, consolidation, extra) => {
+const addImagination = wrapper.logCorrelationId('repository.db.memory.addImagination', async (correlationId, docId, consolidation, extra) => {
     const imaginationsColl = coll.doc(docId).collection(IMAGINATION_COLLECTION);
     return await doAdd(imaginationsColl, {
         [CONSOLIDATION_FIELD]: consolidation,
@@ -45,7 +45,7 @@ const addImagination = wrapper.logCorrelationId('repository.memory.addImaginatio
     });
 });
 
-const addAction = wrapper.logCorrelationId('repository.memory.addAction', async (correlationId, docId, lvl, elt, extra) => {
+const addAction = wrapper.logCorrelationId('repository.db.memory.addAction', async (correlationId, docId, lvl, elt, extra) => {
     const actionsColl = coll.doc(docId).collection(ACTION_COLLECTION);
     return await doAdd(actionsColl, {
         [LVL_FIELD]: lvl,
@@ -69,7 +69,7 @@ const doAdd = async (coll, partialDoc) => {
     });
 };
 
-const getLatest = wrapper.logCorrelationId('repository.memory.getLatest', async (correlationId, docId, numResults) => {
+const getLatest = wrapper.logCorrelationId('repository.db.memory.getLatest', async (correlationId, docId, numResults) => {
     const snapshot = await coll.doc(docId).collection(ELT_COLLECTION)
         .select(INDEX_FIELD, ELT_FIELD).orderBy(INDEX_FIELD, 'desc').limit(numResults).get();
     const data = snapshot.docs.map(doc => doc.data());
@@ -78,7 +78,7 @@ const getLatest = wrapper.logCorrelationId('repository.memory.getLatest', async 
     return {elts, latestIndex};
 });
 
-const getHistory = wrapper.logCorrelationId('repository.memory.getHistory', async (correlationId, docId, offset, limit) => {
+const getHistory = wrapper.logCorrelationId('repository.db.memory.getHistory', async (correlationId, docId, offset, limit) => {
     const snapshot = await coll.doc(docId).collection(ELT_COLLECTION)
         .select(INDEX_FIELD, IS_INTERNAL_FIELD, ELT_FIELD)
         .where(IS_INTERNAL_FIELD, '!=', true).orderBy(IS_INTERNAL_FIELD)
@@ -87,7 +87,7 @@ const getHistory = wrapper.logCorrelationId('repository.memory.getHistory', asyn
     return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
 });
 
-const getActions = wrapper.logCorrelationId('repository.memory.getActions', async (correlationId, docId, lvl, numResults) => {
+const getActions = wrapper.logCorrelationId('repository.db.memory.getActions', async (correlationId, docId, lvl, numResults) => {
     const snapshot = await coll.doc(docId).collection(ACTION_COLLECTION)
         .select(INDEX_FIELD, LVL_FIELD, ELT_FIELD)
         .where(LVL_FIELD, '==', lvl).orderBy(LVL_FIELD)
@@ -96,7 +96,7 @@ const getActions = wrapper.logCorrelationId('repository.memory.getActions', asyn
     return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
 });
 
-const shortTermSearch = wrapper.logCorrelationId('repository.memory.shortTermSearch', async (correlationId, docId, maximizingObjective, numResults) => {
+const shortTermSearch = wrapper.logCorrelationId('repository.db.memory.shortTermSearch', async (correlationId, docId, maximizingObjective, numResults) => {
     const snapshot = await coll.doc(docId).collection(ELT_COLLECTION)
         .select(INDEX_FIELD, TIMESTAMP_FIELD, ELT_FIELD).orderBy(INDEX_FIELD, 'desc').limit(SHORT_TERM_SEARCH_LOOKBACK_LIMIT).get();
     const data = snapshot.docs.map(doc => doc.data());
@@ -106,7 +106,7 @@ const shortTermSearch = wrapper.logCorrelationId('repository.memory.shortTermSea
         .slice(0, numResults);
 });
 
-const longTermSearch = wrapper.logCorrelationId('repository.memory.longTermSearch', async (correlationId, docId, maximizingObjective, numResults) => {
+const longTermSearch = wrapper.logCorrelationId('repository.db.memory.longTermSearch', async (correlationId, docId, maximizingObjective, numResults) => {
     const data = [];
     for (let lvl = 0; lvl <= MAX_CONSOLIDATION_LVL + 1; lvl++) {
         const lookbackLimit = lvl ? LONG_TERM_SEARCH_IMAGINATION_LOOKBACK_LIMIT : LONG_TERM_SEARCH_SUMMARY_LOOKBACK_LIMIT;
@@ -128,7 +128,7 @@ const longTermSearch = wrapper.logCorrelationId('repository.memory.longTermSearc
         .slice(0, numResults);
 });
 
-const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', async (correlationId, docId, consolidationFn) => {
+const consolidate = wrapper.logCorrelationId('repository.db.memory.consolidate', async (correlationId, docId, consolidationFn) => {
     const ret = [];
     for (let lvl = 0; lvl <= MAX_CONSOLIDATION_LVL; lvl++) {
         const prevLvlColl = coll.doc(docId).collection(
@@ -176,7 +176,7 @@ const consolidate = wrapper.logCorrelationId('repository.memory.consolidate', as
     return ret;
 });
 
-const scheduleImagination = wrapper.logCorrelationId('repository.memory.scheduleImagination', async (correlationId, docId, getNext) => {
+const scheduleImagination = wrapper.logCorrelationId('repository.db.memory.scheduleImagination', async (correlationId, docId, getNext) => {
     return await db.runTransaction(async (txn) => {
         const doc = coll.doc(docId);
         const s = await txn.get(doc);
@@ -191,7 +191,7 @@ const scheduleImagination = wrapper.logCorrelationId('repository.memory.schedule
     });
 });
 
-const imagine = wrapper.logCorrelationId('repository.memory.imagine', async (correlationId, refTime, imaginationFn) => {
+const imagine = wrapper.logCorrelationId('repository.db.memory.imagine', async (correlationId, refTime, imaginationFn) => {
     const s = await coll
         .select(SCHEDULED_IMAGINATION_FIELD).where(SCHEDULED_IMAGINATION_FIELD, '<=', firestore.Timestamp.fromDate(refTime))
         .orderBy(SCHEDULED_IMAGINATION_FIELD).get();

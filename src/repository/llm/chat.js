@@ -1,15 +1,15 @@
-import common_ from '../common.js';
-import fetch_ from '../util/fetch.js';
-import strictParse from '../util/strictParse.js';
-import log from '../util/log.js';
-import wrapper from '../util/wrapper.js';
+import common_ from '../../common.js';
+import fetch_ from '../../util/fetch.js';
+import strictParse from '../../util/strictParse.js';
+import log from '../../util/log.js';
+import wrapper from '../../util/wrapper.js';
 
 const URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4-1106-preview';
 const TOP_P = .001;
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
 
-const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlationId, content, maxTokens, fn) => {
+const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, content, maxTokens, fn) => {
     const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -18,14 +18,14 @@ const chat = wrapper.logCorrelationId('repository.chat.chat', async (correlation
         },
         body: JSON.stringify({
             model: MODEL,
-            // NB: forego "chat" approach in favor of single "system message"
+            // NB: forego chat capabilities in favor of a single system message
             messages: [
                 {
                     role: 'system',
                     content,
                 },
             ],
-            // NB: forego more than one function
+            // NB: forego multiple functions
             ...(!fn ? {} : {
                 tools: [
                     {

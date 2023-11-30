@@ -1,13 +1,13 @@
-import common_ from '../common.js';
-import fetch_ from '../util/fetch.js';
-import strictParse from '../util/strictParse.js';
-import log from '../util/log.js';
-import wrapper from '../util/wrapper.js';
+import common_ from '../../common.js';
+import fetch_ from '../../util/fetch.js';
+import strictParse from '../../util/strictParse.js';
+import log from '../../util/log.js';
+import wrapper from '../../util/wrapper.js';
 
 const URL = 'https://serpapi.com/search';
 const TIMEOUT = strictParse.int(process.env.SERPAPI_SEARCH_API_TIMEOUT_SECS) * 1000;
 
-const search = wrapper.logCorrelationId('repository.serp.search', async (correlationId, query) => {
+const search = wrapper.logCorrelationId('repository.web.serp.search', async (correlationId, query) => {
     const resp = await fetch_.withTimeout(`${URL}?${new URLSearchParams({
         api_key: common_.SECRETS.SERPAPI_API_KEY,
         engine: 'google',

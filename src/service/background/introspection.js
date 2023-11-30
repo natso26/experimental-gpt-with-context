@@ -1,10 +1,10 @@
-import tokenizer from '../repository/tokenizer.js';
-import memory from '../repository/memory.js';
-import common from './common.js';
-import strictParse from '../util/strictParse.js';
-import log from '../util/log.js';
-import wrapper from '../util/wrapper.js';
-import time from '../util/time.js';
+import tokenizer from '../../repository/llm/tokenizer.js';
+import memory from '../../repository/db/memory.js';
+import common from '../common.js';
+import strictParse from '../../util/strictParse.js';
+import log from '../../util/log.js';
+import wrapper from '../../util/wrapper.js';
+import time from '../../util/time.js';
 
 const MODEL_PROMPT_QUERY_FIELD = 'query';
 const MODEL_PROMPT_REPLY_FIELD = 'reply';
@@ -18,7 +18,7 @@ const MAX_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MAX_WAIT_TIME_SE
 const CONTEXT_COUNT = strictParse.int(process.env.INTROSPECTION_CONTEXT_COUNT);
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.INTROSPECTION_TOKEN_COUNT_LIMIT);
 
-const introspect = wrapper.logCorrelationId('service.introspection.introspect', async (correlationId, userId, sessionId, index) => {
+const introspect = wrapper.logCorrelationId('service.background.introspection.introspect', async (correlationId, userId, sessionId, index) => {
     log.log('introspect: parameters', {correlationId, userId, sessionId, index});
     const docId = common.DOC_ID.from(userId, sessionId);
     const waitTime = Math.exp(Math.log(MIN_WAIT_TIME)
@@ -26,7 +26,7 @@ const introspect = wrapper.logCorrelationId('service.introspection.introspect', 
     log.log('introspect: wait time', {correlationId, docId, waitTime});
     await new Promise(resolve => setTimeout(resolve, waitTime));
     const start = new Date();
-    // NB: since introspection can interleave with (query, reply) at at most 1:1, we double the search range
+    // NB: introspection can interleave with (query, reply) up to 1:1, so we double search range
     const {elts: rawContext, latestIndex} = await memory.getLatest(correlationId, docId, 2 * CONTEXT_COUNT);
     if (latestIndex !== index) {
         log.log(`introspect: index outdated; do nothing: ${index} < ${latestIndex}`,
