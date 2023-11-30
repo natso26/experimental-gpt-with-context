@@ -1,4 +1,4 @@
-import introspection from '../service/introspection.js';
+import introspection from '../service/background/introspection.js';
 import common from './common.js';
 import wrapper from '../util/wrapper.js';
 

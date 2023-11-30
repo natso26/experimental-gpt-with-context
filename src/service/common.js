@@ -1,8 +1,8 @@
-import embedding from '../repository/embedding.js';
-import chat from '../repository/chat.js';
-import wolframAlpha from '../repository/wolframAlpha.js';
-import serp from '../repository/serp.js';
-import scraper from '../repository/scraper.js';
+import embedding from '../repository/llm/embedding.js';
+import chat from '../repository/llm/chat.js';
+import wolframAlpha from '../repository/web/wolframAlpha.js';
+import serp from '../repository/web/serp.js';
+import scraper from '../repository/web/scraper.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 
@@ -27,7 +27,6 @@ const INTROSPECTION_EMBEDDING_FIELD = 'introspectionEmbedding';
 const IMAGINATION_FIELD = 'imagination';
 const IMAGINATION_EMBEDDING_FIELD = 'imaginationEmbedding';
 const MODEL_PROMPT_EXTERNAL_COMPONENT_MSG = 'This is an external component.';
-const MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG = 'This is an intermediate component.';
 const MODEL_PROMPT_INTERNAL_COMPONENT_MSG = 'This is an internal component.';
 const MODEL_PROMPT_FORMATTED_TIME = () => new Date().toISOString();
 const EMBED_RETRY_COUNT = strictParse.int(process.env.EMBED_REPOSITORY_RETRY_COUNT);
@@ -106,7 +105,6 @@ export default {
     IMAGINATION_FIELD,
     IMAGINATION_EMBEDDING_FIELD,
     MODEL_PROMPT_EXTERNAL_COMPONENT_MSG,
-    MODEL_PROMPT_INTERMEDIATE_COMPONENT_MSG,
     MODEL_PROMPT_INTERNAL_COMPONENT_MSG,
     MODEL_PROMPT_FORMATTED_TIME,
     absCosineSimilarity,

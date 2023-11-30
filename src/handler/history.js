@@ -1,5 +1,5 @@
-import user_ from '../service/user.js';
-import history_ from '../service/history.js';
+import user_ from '../service/support/user.js';
+import history_ from '../service/support/history.js';
 import common from './common.js';
 import wrapper from '../util/wrapper.js';
 

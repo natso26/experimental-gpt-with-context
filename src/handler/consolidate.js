@@ -1,4 +1,4 @@
-import consolidation from '../service/consolidation.js';
+import consolidation from '../service/background/consolidation.js';
 import common from './common.js';
 import wrapper from '../util/wrapper.js';
 

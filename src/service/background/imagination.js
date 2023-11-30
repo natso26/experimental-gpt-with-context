@@ -1,10 +1,10 @@
-import tokenizer from '../repository/tokenizer.js';
-import memory from '../repository/memory.js';
-import common from './common.js';
-import strictParse from '../util/strictParse.js';
-import log from '../util/log.js';
-import wrapper from '../util/wrapper.js';
-import time from '../util/time.js';
+import tokenizer from '../../repository/llm/tokenizer.js';
+import memory from '../../repository/db/memory.js';
+import common from '../common.js';
+import strictParse from '../../util/strictParse.js';
+import log from '../../util/log.js';
+import wrapper from '../../util/wrapper.js';
+import time from '../../util/time.js';
 
 const MODEL_PROMPT_SCORE_FIELD = 'score';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
@@ -19,7 +19,7 @@ const CONTEXT_SCORE = (rand, sim) => {
 const CONTEXT_COUNT = strictParse.int(process.env.IMAGINATION_CONTEXT_COUNT);
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.IMAGINATION_TOKEN_COUNT_LIMIT);
 
-const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (correlationId) => {
+const imagine = wrapper.logCorrelationId('service.background.imagination.imagine', async (correlationId) => {
     log.log('imagine: parameters', {correlationId});
     const imagineRes = await memory.imagine(correlationId, new Date(), async (docId) => {
         log.log(`imagine: imagine for doc ID ${docId}`, {correlationId, docId});
@@ -49,7 +49,7 @@ const imagine = wrapper.logCorrelationId('service.imagination.imagine', async (c
                 imagination: null,
             };
         }
-        // NB: summary and imagination are not distinguished
+        // NB: summary and imagination not distinguished
         const context = rawContext.map(([{
             [common.SUMMARY_FIELD]: summary,
             [common.IMAGINATION_FIELD]: imagination,

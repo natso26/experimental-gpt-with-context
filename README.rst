@@ -1,13 +1,11 @@
-Intelligence Experiment
-=======================
-
-GPT in the machine.
+GPT in the Machine
+==================
 
 
 Data
 ----
 
-Sequence of ``query`` and ``reply`` pairs. Internal flow:
+Sequence of ``(query, reply)`` with internal flow:
 
 .. code-block:: none
 
@@ -27,30 +25,29 @@ Mechanism
 ---------
 
 1. Context. Short-term context of ``(query, reply)`` and ``introspection``,
-   scored by recency and cosine similarity of embeddings.
+   scored by recency and embedding similarity.
    Long-term context of ``summary`` and ``imagination``,
-   scored by cosine similarity of embeddings.
+   scored by embedding similarity.
 
-2. Consolidation. Summarize ``(query, reply)`` as ``summary``;
-   summarize ``summary`` as higher-order ``summary``.
+2. Consolidation. ``(query, reply)`` to ``summary``;
+   ``summary`` to higher-order ``summary``.
 
-3. Introspection. Thoughts on ``(query, reply)``
-   some amount of time after the user's idleness.
+3. Introspection. Analyze ``(query, reply)`` some time after user becomes idle.
 
-4. Imagination. Thoughts on random selection of related ``summary`` and ``imagination``,
-   scheduled in advance after user interaction.
+4. Imagination. Scheduled thoughts on random related selection of ``summary``, ``imagination``.
 
-5. Action. Can launch subtasks including recursion.
+5. Action. Launch subtasks.
 
-6. Knowledge. Query Wolfram|Alpha and Google search engine results pages.
+6. Knowledge. Wolfram|Alpha, Google search engine results pages.
 
-7. Research. Search for information from web sites.
+7. Research. Scrape web pages.
 
 
 Engineering
 -----------
 
 - Google Cloud Run, Firestore.
+- OpenAI API, Wolfram|Alpha API, SerpApi, ZenRows.
 - Security by manually added user IDs and secret key.
 - Consolidation, introspection by HTTP requests to keep Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
