@@ -294,7 +294,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 {correlationId, docId, i});
             isFinalIter = true;
         }
-        if (localActions.some(({[MODEL_FUNCTION_KIND_ARG_NAME]: kind}) => kind === MODEL_FUNCTION_KIND_REPLY)) {
+        if (localActions.some(({kind}) => kind === MODEL_FUNCTION_KIND_REPLY)) {
             log.log(`query: iter ${i}: function call: has reply action`,
                 {correlationId, docId, i});
             isFinalIter = true;
