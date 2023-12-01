@@ -13,7 +13,7 @@ const DOC_ID = {
         return {userId, sessionId};
     },
 };
-const TYPE_FIELD = 'type';
+const KIND_FIELD = 'kind';
 const RECURSED_NOTE_FIELD = 'recursedNote';
 const RECURSED_QUERY_FIELD = 'recursedQuery';
 const QUERY_FIELD = 'query';
@@ -91,7 +91,7 @@ const scraperExtractWithRetry = retry(scraper.extract, (e, cnt) => {
 
 export default {
     DOC_ID,
-    TYPE_FIELD,
+    KIND_FIELD,
     RECURSED_NOTE_FIELD,
     RECURSED_QUERY_FIELD,
     QUERY_FIELD,

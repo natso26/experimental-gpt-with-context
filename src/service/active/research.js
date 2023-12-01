@@ -24,7 +24,7 @@ const MODEL_CONCLUSION_PROMPT = (answers, query, recursedNote, recursedQuery) =>
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`
     + `\naggregate`;
-const ACTION_SUBTYPE_ANSWER = 'research/answer';
+const ACTION_KIND_ANSWER = 'research-answer';
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
 const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
 const URL_COUNT = strictParse.int(process.env.RESEARCH_URL_COUNT);
@@ -76,7 +76,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             return;
         }
         await memory.addAction(correlationId, docId, ACTION_LVL, {
-            [common.TYPE_FIELD]: ACTION_SUBTYPE_ANSWER,
+            [common.KIND_FIELD]: ACTION_KIND_ANSWER,
             [common.RECURSED_NOTE_FIELD]: recursedNote || '',
             [common.RECURSED_QUERY_FIELD]: recursedQuery,
             [common.REPLY_FIELD]: answer,
