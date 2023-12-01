@@ -258,15 +258,15 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             if (!full) {
                 return;
             }
-            if (full[MODEL_FUNCTION_KIND_ARG_NAME] === MODEL_FUNCTION_KIND_REPLY) {
-                return;
-            }
             const {
                 [MODEL_PROMPT_KIND_FIELD]: kind,
                 [MODEL_PROMPT_RECURSED_NOTE_FIELD]: recursedNote,
                 [MODEL_PROMPT_RECURSED_QUERY_FIELD]: recursedQuery,
                 [MODEL_PROMPT_REPLY_FIELD]: reply,
             } = formatted;
+            if (kind === MODEL_FUNCTION_KIND_REPLY) {
+                return;
+            }
             await memory.addAction(correlationId, docId, actionLvl, {
                 [common.KIND_FIELD]: kind,
                 [common.RECURSED_NOTE_FIELD]: recursedNote,
