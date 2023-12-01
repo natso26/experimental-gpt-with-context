@@ -13,7 +13,7 @@ const QUERY_INTERNAL_URL = `${process.env.INTERNAL_API_HOST}${common_.QUERY_INTE
 const RESEARCH_INTERNAL_URL = `${process.env.INTERNAL_API_HOST}${common_.RESEARCH_INTERNAL_ROUTE}`;
 const CONSOLIDATE_INTERNAL_URL = `${process.env.INTERNAL_API_HOST}${common_.CONSOLIDATE_INTERNAL_ROUTE}`;
 const INTROSPECT_INTERNAL_URL = `${process.env.INTERNAL_API_HOST}${common_.INTROSPECT_INTERNAL_ROUTE}`;
-const MODEL_PROMPT_TYPE_FIELD = 'type';
+const MODEL_PROMPT_KIND_FIELD = 'kind';
 const MODEL_PROMPT_RECURSED_NOTE_FIELD = 'recursedNote';
 const MODEL_PROMPT_RECURSED_QUERY_FIELD = 'recursedQuery';
 const MODEL_PROMPT_SCORE_FIELD = 'score';
@@ -37,14 +37,15 @@ const MODEL_PROMPT = (info, search, actionHistory, actions, longTermContext, sho
     + ((!recursedQuery || recursedQuery === query) ? '' : `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`)
     + `\nreply`;
 const MODEL_FUNCTION_NAME = 'act';
-const MODEL_FUNCTION_TYPE_ARG_NAME = 'type';
+const MODEL_FUNCTION_KIND_ARG_NAME = 'kind';
 const MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME = 'recursedNote';
 const MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME = 'recursedQuery';
 const MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME_IS_POSSIBLE_TYPO = (k) => k.endsWith('Query');
-const MODEL_FUNCTION_TYPE_THINK = 'think';
-const MODEL_FUNCTION_TYPE_RESEARCH = 'research';
-const MODEL_FUNCTION_TYPES = [MODEL_FUNCTION_TYPE_THINK, MODEL_FUNCTION_TYPE_RESEARCH];
-// NB: mechanism prone to collapse: recursing to same query, repeating previous actions, using single action type;
+const MODEL_FUNCTION_KIND_THINK = 'think';
+const MODEL_FUNCTION_KIND_RESEARCH = 'research';
+const MODEL_FUNCTION_KIND_REPLY = 'reply'; // NB: way out to not launch subtask
+const MODEL_FUNCTION_KINDS = [MODEL_FUNCTION_KIND_THINK, MODEL_FUNCTION_KIND_RESEARCH, MODEL_FUNCTION_KIND_REPLY];
+// NB: mechanism prone to collapse: recursing to same query, repeating previous actions, using single action kind;
 //  issues are traded off but not perfectly resolved
 const MODEL_FUNCTION = {
     name: MODEL_FUNCTION_NAME,
@@ -54,9 +55,9 @@ const MODEL_FUNCTION = {
         properties: {
             [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {type: 'string'},
             [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: {type: 'string', description: 'should not recurse to same query'},
-            [MODEL_FUNCTION_TYPE_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_TYPES},
+            [MODEL_FUNCTION_KIND_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_KINDS},
         },
-        required: [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME, MODEL_FUNCTION_TYPE_ARG_NAME],
+        required: [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME, MODEL_FUNCTION_KIND_ARG_NAME],
     },
 };
 const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_QUERY_TOKEN_COUNT_LIMIT);
@@ -67,7 +68,7 @@ const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_T
 const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
 const MAX_ITERS_WITH_ACTIONS = strictParse.int(process.env.QUERY_MAX_ITERS_WITH_ACTIONS);
 const MAX_ACTION_COUNTS = {
-    [MODEL_FUNCTION_TYPE_RESEARCH]: strictParse.int(process.env.QUERY_MAX_RESEARCH_ACTION_COUNT),
+    [MODEL_FUNCTION_KIND_RESEARCH]: strictParse.int(process.env.QUERY_MAX_RESEARCH_ACTION_COUNT),
 };
 const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_COUNT);
 const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
@@ -88,6 +89,7 @@ const SHORT_TERM_CONTEXT_COUNT = strictParse.int(process.env.QUERY_SHORT_TERM_CO
 const LONG_TERM_CONTEXT_COUNT = strictParse.int(process.env.QUERY_LONG_TERM_CONTEXT_COUNT);
 const REPLY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_REPLY_TOKEN_COUNT_LIMIT);
 const RECURSION_TIMEOUT = strictParse.int(process.env.QUERY_RECURSION_TIMEOUT_SECS) * 1000;
+const REPLY_ACTION_MIN_RECURSED_NOTE_TOKEN_COUNT_TO_PRIORITIZE = strictParse.int(process.env.QUERY_REPLY_ACTION_MIN_RECURSED_NOTE_TOKEN_COUNT_TO_PRIORITIZE);
 const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 
@@ -183,16 +185,16 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         const localActionTasks = [];
         for (const {args} of cleanedLocalFunctionCalls) {
             const {
-                [MODEL_FUNCTION_TYPE_ARG_NAME]: type,
+                [MODEL_FUNCTION_KIND_ARG_NAME]: kind,
                 [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: recursedNextNote,
                 [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery,
             } = args;
-            if (!MODEL_FUNCTION_TYPES.includes(type) || !recursedNextQuery) {
+            if (!MODEL_FUNCTION_KINDS.includes(kind) || !recursedNextQuery) {
                 log.log(`query: iter ${i}: function call: invalid args`, {correlationId, docId, i, args});
                 continue;
             }
             if (cleanedFunctionCalls.some(({v: calls}) => calls.some(({args}) =>
-                args[MODEL_FUNCTION_TYPE_ARG_NAME] === type && args[MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME] === recursedNextQuery))) {
+                args[MODEL_FUNCTION_KIND_ARG_NAME] === kind && args[MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME] === recursedNextQuery))) {
                 log.log(`query: iter ${i}: function call: duplicate with previous iters`,
                     {correlationId, docId, i, args});
                 continue;
@@ -204,40 +206,46 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                     {correlationId, docId, i, args});
                 continue;
             }
-            if (MAX_ACTION_COUNTS[type] !== undefined && (actionCounts[type] || 0) >= MAX_ACTION_COUNTS[type]) {
+            if (MAX_ACTION_COUNTS[kind] !== undefined && (actionCounts[kind] || 0) >= MAX_ACTION_COUNTS[kind]) {
                 log.log(`query: iter ${i}: function call: at max action count`,
-                    {correlationId, docId, i, type, actionCounts});
+                    {correlationId, docId, i, kind, actionCounts});
                 continue;
             }
-            actionCounts[type] = (actionCounts[type] || 0) + 1;
+            actionCounts[kind] = (actionCounts[kind] || 0) + 1;
             localActionTasks.push((async () => {
                 let reply = null;
                 let data = null;
-                switch (type) {
-                    case MODEL_FUNCTION_TYPE_THINK:
+                switch (kind) {
+                    case MODEL_FUNCTION_KIND_THINK:
                         const thinkRes =
                             await thinkAction(correlationId, docId, query, recursedNextNote, recursedNextQuery);
                         reply = thinkRes.reply || null;
                         data = thinkRes.data || null;
                         break;
-                    case MODEL_FUNCTION_TYPE_RESEARCH:
+                    case MODEL_FUNCTION_KIND_RESEARCH:
                         const researchRes =
                             await researchAction(correlationId, docId, query, recursedNextNote, recursedNextQuery);
                         reply = researchRes.reply || null;
                         data = researchRes.data || null;
+                        break;
+                    case MODEL_FUNCTION_KIND_REPLY:
+                        const replyRes =
+                            await replyAction(correlationId, docId, query, recursedNextNote, recursedNextQuery);
+                        reply = replyRes.reply || null;
+                        data = replyRes.data || null;
                         break;
                 }
                 return !reply ? {
                     full: null,
                 } : {
                     full: {
-                        type,
+                        kind,
                         recursedNextNote,
                         recursedNextQuery,
                         data,
                     },
                     formatted: {
-                        [MODEL_PROMPT_TYPE_FIELD]: type,
+                        [MODEL_PROMPT_KIND_FIELD]: kind,
                         [MODEL_PROMPT_RECURSED_NOTE_FIELD]: recursedNextNote || '',
                         [MODEL_PROMPT_RECURSED_QUERY_FIELD]: recursedNextQuery,
                         [MODEL_PROMPT_REPLY_FIELD]: reply,
@@ -251,13 +259,16 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 return;
             }
             const {
-                [MODEL_PROMPT_TYPE_FIELD]: type,
+                [MODEL_PROMPT_KIND_FIELD]: kind,
                 [MODEL_PROMPT_RECURSED_NOTE_FIELD]: recursedNote,
                 [MODEL_PROMPT_RECURSED_QUERY_FIELD]: recursedQuery,
                 [MODEL_PROMPT_REPLY_FIELD]: reply,
             } = formatted;
+            if (kind === MODEL_FUNCTION_KIND_REPLY) {
+                return;
+            }
             await memory.addAction(correlationId, docId, actionLvl, {
-                [common.TYPE_FIELD]: type,
+                [common.KIND_FIELD]: kind,
                 [common.RECURSED_NOTE_FIELD]: recursedNote,
                 [common.RECURSED_QUERY_FIELD]: recursedQuery,
                 [common.REPLY_FIELD]: reply,
@@ -280,6 +291,11 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         cleanedFunctionCalls.push({v: cleanedLocalFunctionCalls});
         if (!localActions.length) {
             log.log(`query: iter ${i}: function call: no result`,
+                {correlationId, docId, i});
+            isFinalIter = true;
+        }
+        if (localActions.some(({kind}) => kind === MODEL_FUNCTION_KIND_REPLY)) {
+            log.log(`query: iter ${i}: function call: has reply action`,
                 {correlationId, docId, i});
             isFinalIter = true;
         }
@@ -418,7 +434,7 @@ const getSearch = async (correlationId, docId, recursedQuery) => {
 
 const getActionHistory = async (correlationId, docId, actionLvl) => {
     const rawActionHistory = await memory.getActions(correlationId, docId, actionLvl, ACTION_HISTORY_COUNT);
-    // NB: exclude type field to reduce influence on actions
+    // NB: exclude kind field to reduce influence on actions
     const actionHistory = rawActionHistory.map(
         ({
              [common.RECURSED_NOTE_FIELD]: recursedNote,
@@ -496,14 +512,14 @@ const cleanFunctionCall = (correlationId, docId, i, call) => {
             {correlationId, docId, i, call});
     }
     let {
-        [MODEL_FUNCTION_TYPE_ARG_NAME]: type,
+        [MODEL_FUNCTION_KIND_ARG_NAME]: kind,
         [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: rawRecursedNextNote,
         [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery,
     } = args;
-    if (type === undefined && MODEL_FUNCTION_TYPES.includes(name)) {
-        type = name;
-        log.log('query: clean function call: use fallback type',
-            {correlationId, docId, i, call, type});
+    if (kind === undefined && MODEL_FUNCTION_KINDS.includes(name)) {
+        kind = name;
+        log.log('query: clean function call: use fallback kind',
+            {correlationId, docId, i, call, kind});
     }
     if (recursedNextQuery === undefined) {
         for (const [k, v] of Object.entries(args)) {
@@ -517,7 +533,7 @@ const cleanFunctionCall = (correlationId, docId, i, call) => {
     }
     const recursedNextNote = rawRecursedNextNote || null;
     const cleanedArgs = {
-        [MODEL_FUNCTION_TYPE_ARG_NAME]: type,
+        [MODEL_FUNCTION_KIND_ARG_NAME]: kind,
         [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: recursedNextNote,
         [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery,
     };
@@ -592,6 +608,18 @@ const researchAction = async (correlationId, docId, query, recursedNextNote, rec
         });
         return {reply: null};
     }
+};
+
+const replyAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery) => {
+    const c = !recursedNextNote ? 0 : await tokenizer.countTokens(correlationId, recursedNextNote);
+    let reply = null;
+    if (c >= REPLY_ACTION_MIN_RECURSED_NOTE_TOKEN_COUNT_TO_PRIORITIZE) {
+        reply = recursedNextNote;
+        log.log('query: action: reply: use recursed note', {correlationId, docId, c});
+    } else {
+        reply = recursedNextQuery;
+    }
+    return {reply};
 };
 
 const setScheduledImagination = async (correlationId, docId) => {
