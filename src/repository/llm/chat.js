@@ -48,7 +48,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         log.log(msg, {correlationId, body});
         throw new Error(msg);
     }
-    const data = await streamReadBody(resp, shortCircuitHook);
+    const data = await streamReadBody(correlationId, resp, shortCircuitHook);
     const {content: content_, toolCalls} = data;
     const functionCalls = toolCalls.map((call) => {
         const {name, args: rawArgs} = call;
@@ -60,7 +60,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             };
         } catch (e) {
             log.log(`chat completions api: invalid json for args of function: ${name}`,
-                {name, rawArgs, error: e.message || '', stack: e.stack || ''});
+                {correlationId, name, rawArgs, error: e.message || '', stack: e.stack || ''});
             return {
                 name,
             };
@@ -72,7 +72,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     };
 });
 
-const streamReadBody = async (resp, shortCircuitHook) => {
+const streamReadBody = async (correlationId, resp, shortCircuitHook) => {
     let content = '';
     let toolCalls = [];
     const processChunk = (chunk) => {
@@ -101,7 +101,7 @@ const streamReadBody = async (resp, shortCircuitHook) => {
             }
         } catch (e) {
             log.log(`chat completions api: invalid json for chunk: ${chunk}`,
-                {chunk, error: e.message || '', stack: e.stack || ''});
+                {correlationId, chunk, error: e.message || '', stack: e.stack || ''});
         }
     };
     let currChunk = '';
@@ -119,7 +119,8 @@ const streamReadBody = async (resp, shortCircuitHook) => {
                 processChunk(currChunk);
                 const shortCircuit = shortCircuitHook?.({content, toolCalls});
                 if (shortCircuit) {
-                    log.log('chat completions api: short circuiting', {content, toolCalls});
+                    log.log('chat completions api: short circuiting',
+                        {correlationId, content, toolCalls});
                     return shortCircuit;
                 }
             }
