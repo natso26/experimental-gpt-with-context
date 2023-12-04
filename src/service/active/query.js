@@ -87,6 +87,7 @@ const CTX_SCORE = (i, ms, getSim) => {
 };
 const SHORT_TERM_CONTEXT_COUNT = strictParse.int(process.env.QUERY_SHORT_TERM_CONTEXT_COUNT);
 const LONG_TERM_CONTEXT_COUNT = strictParse.int(process.env.QUERY_LONG_TERM_CONTEXT_COUNT);
+const SHORT_CIRCUIT_TO_ACTION_OVERLAPPING_TOKENS = strictParse.int(process.env.QUERY_SHORT_CIRCUIT_TO_ACTION_OVERLAPPING_TOKENS);
 const REPLY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_REPLY_TOKEN_COUNT_LIMIT);
 const RECURSION_TIMEOUT = strictParse.int(process.env.QUERY_RECURSION_TIMEOUT_SECS) * 1000;
 const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
@@ -153,6 +154,8 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     const elapsedFunctionCalls = [];
     const functionCalls = [];
     const cleanedFunctionCalls = [];
+    const actionsShortCircuitHook = common.shortCircuitAutocompleteContentHook(
+        correlationId, SHORT_CIRCUIT_TO_ACTION_OVERLAPPING_TOKENS);
     let reply = '';
     let isFinalIter = !!recursedQuery; // NB: recurse once
     let i = 0;
@@ -164,7 +167,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
         const startLocalChat = new Date();
         const {content: localReply, functionCalls: localFunctionCalls} = await common.chatWithRetry(
-            correlationId, localPrompt, REPLY_TOKEN_COUNT_LIMIT, !isFinalIter ? MODEL_FUNCTION : null);
+            correlationId, localPrompt, REPLY_TOKEN_COUNT_LIMIT, actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null);
         const elapsedLocalChat = time.elapsedSecs(startLocalChat);
         elapsedChats.push(elapsedLocalChat);
         const localPromptTokenCount = await tokenizer.countTokens(correlationId, localPrompt);
@@ -290,6 +293,8 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         elapsedFunctionCalls.push(elapsedLocalFunctionCalls);
         functionCalls.push({v: localFunctionCalls});
         cleanedFunctionCalls.push({v: cleanedLocalFunctionCalls});
+        await Promise.all(localFormattedActionsForPrompt.map(
+            ({[MODEL_PROMPT_REPLY_FIELD]: reply}) => actionsShortCircuitHook.add(reply)));
         if (!localActions.length) {
             log.log(`query: iter ${i}: function call: no result`,
                 {correlationId, docId, i});

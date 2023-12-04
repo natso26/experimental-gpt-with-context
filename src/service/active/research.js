@@ -32,6 +32,7 @@ const RETRY_NEW_URL_COUNT = strictParse.int(process.env.RESEARCH_RETRY_NEW_URL_C
 const INPUT_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.RESEARCH_INPUT_TRUNCATION_TOKEN_COUNT);
 const INPUT_MIN_TOKEN_COUNT = strictParse.int(process.env.RESEARCH_INPUT_MIN_TOKEN_COUNT);
 const ANSWER_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_ANSWER_TOKEN_COUNT_LIMIT);
+const SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS = strictParse.int(process.env.RESEARCH_SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS);
 const CONCLUSION_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_CONCLUSION_TOKEN_COUNT_LIMIT);
 
 const research = wrapper.logCorrelationId('service.active.research.research', async (correlationId, userId, sessionId, query, recursedNote, recursedQuery) => {
@@ -95,10 +96,14 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             reply: null,
         };
     }
+    const answersShortCircuitHook = common.shortCircuitAutocompleteContentHook(
+        correlationId, SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS);
+    await Promise.all(formattedAnswers.map(
+        (answer) => answersShortCircuitHook.add(answer)));
     const conclusionPrompt = MODEL_CONCLUSION_PROMPT(formattedAnswers, query, recursedNote, recursedQuery);
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
     const {content: conclusion} = await common.chatWithRetry(
-        correlationId, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, null);
+        correlationId, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, answersShortCircuitHook, null);
     const conclusionPromptTokenCount = await tokenizer.countTokens(correlationId, conclusionPrompt);
     const conclusionTokenCount = await tokenizer.countTokens(correlationId, conclusion);
     return {
@@ -153,7 +158,7 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
                 const answerPrompt = MODEL_ANSWER_PROMPT(input, query, recursedNote, recursedQuery);
                 log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
                 const {content: answer_} = await common.chatWithRetry(
-                    correlationId, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null);
+                    correlationId, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null, null);
                 answer = answer_;
                 answerPromptTokenCount = await tokenizer.countTokens(correlationId, answerPrompt);
                 answerTokenCount = await tokenizer.countTokens(correlationId, answer);

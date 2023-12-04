@@ -48,7 +48,7 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
     const prompt = MODEL_PROMPT(context);
     log.log('introspect: prompt', {correlationId, docId, prompt});
     const startChat = new Date();
-    const {content: introspection} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, null);
+    const {content: introspection} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, null, null);
     const elapsedChat = time.elapsedSecs(startChat);
     const {embedding: introspectionEmbedding} = await common.embedWithRetry(correlationId, introspection);
     const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);

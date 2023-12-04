@@ -9,7 +9,7 @@ const MODEL = 'gpt-4-1106-preview';
 const TOP_P = .001;
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
 
-const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, content, maxTokens, fn) => {
+const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, content, maxTokens, shortCircuitHook, fn) => {
     const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -48,7 +48,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         log.log(msg, {correlationId, body});
         throw new Error(msg);
     }
-    const data = await streamReadBody(resp);
+    const data = await streamReadBody(resp, shortCircuitHook);
     const {content: content_, toolCalls} = data;
     const functionCalls = toolCalls.map((call) => {
         const {name, args: rawArgs} = call;
@@ -72,7 +72,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     };
 });
 
-const streamReadBody = async (resp) => {
+const streamReadBody = async (resp, shortCircuitHook) => {
     let content = '';
     let toolCalls = [];
     const processChunk = (chunk) => {
@@ -117,6 +117,11 @@ const streamReadBody = async (resp) => {
             }
             if (currChunk) {
                 processChunk(currChunk);
+                const shortCircuit = shortCircuitHook?.({content, toolCalls});
+                if (shortCircuit) {
+                    log.log('chat completions api: short circuiting', {content, toolCalls});
+                    return shortCircuit;
+                }
             }
             currChunk = line.slice(6); // length of 'data: '
         }
