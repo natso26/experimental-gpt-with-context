@@ -1,3 +1,4 @@
+import tokenizer from '../repository/llm/tokenizer.js';
 import embedding from '../repository/llm/embedding.js';
 import chat from '../repository/llm/chat.js';
 import wolframAlpha from '../repository/web/wolframAlpha.js';
@@ -89,6 +90,55 @@ const scraperExtractWithRetry = retry(scraper.extract, (e, cnt) => {
     return cnt < SCRAPER_EXTRACT_RETRY_COUNT;
 });
 
+const shortCircuitAutocompleteContentHook = (correlationId, prefixTokenCount) => {
+    const m = mapDropConflict();
+    const f = ({content, toolCalls}) => {
+        if (toolCalls.length) {
+            return;
+        }
+        for (const [k, v] of m) {
+            if (content.startsWith(k) && v.startsWith(content)) {
+                return {content: v, toolCalls: []};
+            }
+        }
+    };
+    f.add = async (content) => {
+        const {truncated, tokenCount} = await tokenizer.truncate(correlationId, content, prefixTokenCount);
+        if (tokenCount < prefixTokenCount) {
+            return;
+        }
+        m.set(truncated, content);
+    }
+    return f;
+};
+
+const mapDropConflict = () => {
+    const m = new Map();
+    return {
+        [Symbol.iterator]: function* () {
+            for (const [k, v] of m) {
+                const {c, v: v_} = v;
+                if (c) {
+                    continue;
+                }
+                yield [k, v_];
+            }
+        },
+        set: (k, v) => {
+            const prevV = m.get(k);
+            if (!prevV) {
+                m.set(k, {v});
+                return;
+            }
+            const {c, v: v_} = prevV;
+            if (c || v_ === v) {
+                return;
+            }
+            m.set(k, {c: true});
+        },
+    };
+};
+
 export default {
     DOC_ID,
     KIND_FIELD,
@@ -113,4 +163,5 @@ export default {
     wolframAlphaQueryWithRetry,
     serpSearchWithRetry,
     scraperExtractWithRetry,
+    shortCircuitAutocompleteContentHook,
 };

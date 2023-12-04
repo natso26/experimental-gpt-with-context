@@ -43,7 +43,7 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
         const prompt = MODEL_PROMPT(context);
         log.log('consolidate: prompt', {correlationId, docId, lvl, prompt});
         const startChat = new Date();
-        const {content: summary} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, null);
+        const {content: summary} = await common.chatWithRetry(correlationId, prompt, TOKEN_COUNT_LIMIT, null, null);
         const elapsedChat = time.elapsedSecs(startChat);
         const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);

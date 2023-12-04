@@ -9,7 +9,8 @@ const MODEL = 'gpt-4-1106-preview';
 const TOP_P = .001;
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
 
-const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, content, maxTokens, fn) => {
+const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, content, maxTokens, shortCircuitHook, fn) => {
+    const start = Date.now();
     const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -17,6 +18,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             'Authorization': `Bearer ${common_.SECRETS.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
+            stream: true,
             model: MODEL,
             // NB: forego chat capabilities in favor of a single system message
             messages: [
@@ -47,12 +49,16 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         log.log(msg, {correlationId, body});
         throw new Error(msg);
     }
-    const data = await resp.json();
-    const {content: rawContent, tool_calls: rawToolCalls} = data.choices[0].message;
-    const content_ = rawContent || null;
-    const toolCalls = rawToolCalls || [];
+    const data = await streamReadBody(correlationId, resp, start, shortCircuitHook);
+    try {
+        resp.body.destroy(); // early return
+    } catch (e) {
+        log.log('chat completions api: problem destroying response body',
+            {correlationId, error: e.message || '', stack: e.stack || ''});
+    }
+    const {content: content_, toolCalls} = data;
     const functionCalls = toolCalls.map((call) => {
-        const {name, arguments: rawArgs} = call.function;
+        const {name, args: rawArgs} = call;
         try {
             const args = JSON.parse(rawArgs);
             return {
@@ -60,8 +66,8 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
                 args,
             };
         } catch (e) {
-            log.log(`chat completions api: model gave invalid json for args of function: ${name}`,
-                {name, rawArgs, error: e.message || '', stack: e.stack || ''});
+            log.log(`chat completions api: invalid json for args of function: ${name}`,
+                {correlationId, name, rawArgs, error: e.message || '', stack: e.stack || ''});
             return {
                 name,
             };
@@ -72,6 +78,71 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         functionCalls,
     };
 });
+
+const streamReadBody = async (correlationId, resp, start, shortCircuitHook) => {
+    let content = '';
+    let toolCalls = [];
+    const processChunk = (chunk) => {
+        if (chunk === '[DONE]') {
+            return;
+        }
+        try {
+            const chunkData = JSON.parse(chunk);
+            const {content: chunkContent, tool_calls: chunkToolCalls} = chunkData.choices[0].delta;
+            if (chunkContent) {
+                content += chunkContent;
+            }
+            if (chunkToolCalls) {
+                for (const call of chunkToolCalls) {
+                    const i = call.index;
+                    toolCalls[i] ||= {};
+                    const toolCall = toolCalls[i];
+                    const {name, arguments: args} = call.function;
+                    if (name) {
+                        toolCall.name = name;
+                    }
+                    if (args) {
+                        toolCall.args = (toolCall.args || '') + args;
+                    }
+                }
+            }
+        } catch (e) {
+            log.log(`chat completions api: invalid json for chunk: ${chunk}`,
+                {correlationId, chunk, error: e.message || '', stack: e.stack || ''});
+        }
+    };
+    let currChunk = '';
+    for await (const s of resp.body) {
+        const lines = s.toString().split('\n');
+        for (const line of lines) {
+            if (!line) {
+                continue;
+            }
+            if (!line.startsWith('data: ')) {
+                currChunk += line;
+                continue;
+            }
+            if (currChunk) {
+                processChunk(currChunk);
+                const shortCircuit = shortCircuitHook?.({content, toolCalls});
+                if (shortCircuit) {
+                    log.log('chat completions api: short circuiting',
+                        {correlationId, content, toolCalls});
+                    return shortCircuit;
+                }
+            }
+            currChunk = line.slice(6); // length of 'data: '
+        }
+        if (Date.now() - start > TIMEOUT) { // separate from req timeout
+            log.log('chat completions api: timeout', {correlationId});
+            break;
+        }
+    }
+    if (currChunk) {
+        processChunk(currChunk);
+    }
+    return {content, toolCalls};
+};
 
 export default {
     chat,

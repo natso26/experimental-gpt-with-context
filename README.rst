@@ -1,5 +1,5 @@
-Innominatus
-===========
+Existence
+=========
 
 
 Data
@@ -49,6 +49,6 @@ Engineering
 - Google Cloud Run, Firestore.
 - OpenAI API, Wolfram|Alpha API, SerpApi, ZenRows.
 - Security by manually added user IDs and secret key.
-- Consolidation, introspection by HTTP requests to keep Cloud Run awake.
+- Consolidation, introspection by HTTP requests keeping Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
 - Frontend of query and history pages; VanillaJS.
