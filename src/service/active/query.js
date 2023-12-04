@@ -53,8 +53,8 @@ const MODEL_FUNCTION = {
     parameters: {
         type: 'object',
         properties: {
-            [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {type: 'string'},
-            [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: {type: 'string', description: 'should not recurse to same query'},
+            [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {type: 'string', description: 'thoughts'},
+            [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: {type: 'string', description: 'search query'},
             [MODEL_FUNCTION_KIND_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_KINDS},
         },
         required: [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME, MODEL_FUNCTION_KIND_ARG_NAME],
@@ -89,7 +89,6 @@ const SHORT_TERM_CONTEXT_COUNT = strictParse.int(process.env.QUERY_SHORT_TERM_CO
 const LONG_TERM_CONTEXT_COUNT = strictParse.int(process.env.QUERY_LONG_TERM_CONTEXT_COUNT);
 const REPLY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_REPLY_TOKEN_COUNT_LIMIT);
 const RECURSION_TIMEOUT = strictParse.int(process.env.QUERY_RECURSION_TIMEOUT_SECS) * 1000;
-const REPLY_ACTION_MIN_RECURSED_NOTE_TOKEN_COUNT_TO_PRIORITIZE = strictParse.int(process.env.QUERY_REPLY_ACTION_MIN_RECURSED_NOTE_TOKEN_COUNT_TO_PRIORITIZE);
 const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 
@@ -194,7 +193,9 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 continue;
             }
             if (cleanedFunctionCalls.some(({v: calls}) => calls.some(({args}) =>
-                args[MODEL_FUNCTION_KIND_ARG_NAME] === kind && args[MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME] === recursedNextQuery))) {
+                args[MODEL_FUNCTION_KIND_ARG_NAME] === kind
+                && args[MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME] === recursedNextNote
+                && args[MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME] === recursedNextQuery))) {
                 log.log(`query: iter ${i}: function call: duplicate with previous iters`,
                     {correlationId, docId, i, args});
                 continue;
@@ -611,14 +612,7 @@ const researchAction = async (correlationId, docId, query, recursedNextNote, rec
 };
 
 const replyAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery) => {
-    const c = !recursedNextNote ? 0 : await tokenizer.countTokens(correlationId, recursedNextNote);
-    let reply = null;
-    if (c >= REPLY_ACTION_MIN_RECURSED_NOTE_TOKEN_COUNT_TO_PRIORITIZE) {
-        reply = recursedNextNote;
-        log.log('query: action: reply: use recursed note', {correlationId, docId, c});
-    } else {
-        reply = recursedNextQuery;
-    }
+    const reply = recursedNextNote || '';
     return {reply};
 };
 
