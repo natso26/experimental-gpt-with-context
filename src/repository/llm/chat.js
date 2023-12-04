@@ -17,6 +17,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             'Authorization': `Bearer ${common_.SECRETS.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
+            stream: true,
             model: MODEL,
             // NB: forego chat capabilities in favor of a single system message
             messages: [
@@ -47,12 +48,10 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         log.log(msg, {correlationId, body});
         throw new Error(msg);
     }
-    const data = await resp.json();
-    const {content: rawContent, tool_calls: rawToolCalls} = data.choices[0].message;
-    const content_ = rawContent || null;
-    const toolCalls = rawToolCalls || [];
+    const data = await streamReadBody(resp);
+    const {content: content_, toolCalls} = data;
     const functionCalls = toolCalls.map((call) => {
-        const {name, arguments: rawArgs} = call.function;
+        const {name, args: rawArgs} = call;
         try {
             const args = JSON.parse(rawArgs);
             return {
@@ -60,7 +59,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
                 args,
             };
         } catch (e) {
-            log.log(`chat completions api: model gave invalid json for args of function: ${name}`,
+            log.log(`chat completions api: invalid json for args of function: ${name}`,
                 {name, rawArgs, error: e.message || '', stack: e.stack || ''});
             return {
                 name,
@@ -72,6 +71,61 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         functionCalls,
     };
 });
+
+const streamReadBody = async (resp) => {
+    let content = '';
+    let toolCalls = [];
+    const processChunk = (chunk) => {
+        if (chunk === '[DONE]') {
+            return;
+        }
+        try {
+            const chunkData = JSON.parse(chunk);
+            const {content: chunkContent, tool_calls: chunkToolCalls} = chunkData.choices[0].delta;
+            if (chunkContent) {
+                content += chunkContent;
+            }
+            if (chunkToolCalls) {
+                for (const call of chunkToolCalls) {
+                    const i = call.index;
+                    toolCalls[i] ||= {};
+                    const toolCall = toolCalls[i];
+                    const {name, arguments: args} = call.function;
+                    if (name) {
+                        toolCall.name = name;
+                    }
+                    if (args) {
+                        toolCall.args = (toolCall.args || '') + args;
+                    }
+                }
+            }
+        } catch (e) {
+            log.log(`chat completions api: invalid json for chunk: ${chunk}`,
+                {chunk, error: e.message || '', stack: e.stack || ''});
+        }
+    };
+    let currChunk = '';
+    for await (const s of resp.body) {
+        const lines = s.toString().split('\n');
+        for (const line of lines) {
+            if (!line) {
+                continue;
+            }
+            if (!line.startsWith('data: ')) {
+                currChunk += line;
+                continue;
+            }
+            if (currChunk) {
+                processChunk(currChunk);
+            }
+            currChunk = line.slice(6); // length of 'data: '
+        }
+    }
+    if (currChunk) {
+        processChunk(currChunk);
+    }
+    return {content, toolCalls};
+};
 
 export default {
     chat,
