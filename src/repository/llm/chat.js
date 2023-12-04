@@ -9,7 +9,7 @@ const MODEL = 'gpt-4-1106-preview';
 const TOP_P = .001;
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
 
-const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, content, maxTokens, shortCircuitHook, fn) => {
+const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, content, maxTokens, shortCircuitHook, fn) => {
     const start = Date.now();
     const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
@@ -49,7 +49,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         log.log(msg, {correlationId, body});
         throw new Error(msg);
     }
-    const data = await streamReadBody(correlationId, resp, start, shortCircuitHook);
+    const data = await streamReadBody(correlationId, onPartial, resp, start, shortCircuitHook);
     try {
         resp.body.destroy(); // early return
     } catch (e) {
@@ -79,7 +79,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     };
 });
 
-const streamReadBody = async (correlationId, resp, start, shortCircuitHook) => {
+const streamReadBody = async (correlationId, onPartial, resp, start, shortCircuitHook) => {
     let content = '';
     let toolCalls = [];
     const processChunk = (chunk) => {
@@ -91,6 +91,9 @@ const streamReadBody = async (correlationId, resp, start, shortCircuitHook) => {
             const {content: chunkContent, tool_calls: chunkToolCalls} = chunkData.choices[0].delta;
             if (chunkContent) {
                 content += chunkContent;
+                if (onPartial) {
+                    onPartial({content});
+                }
             }
             if (chunkToolCalls) {
                 for (const call of chunkToolCalls) {

@@ -103,7 +103,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const conclusionPrompt = MODEL_CONCLUSION_PROMPT(formattedAnswers, query, recursedNote, recursedQuery);
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
     const {content: conclusion} = await common.chatWithRetry(
-        correlationId, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, answersShortCircuitHook, null);
+        correlationId, null, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, answersShortCircuitHook, null);
     const conclusionPromptTokenCount = await tokenizer.countTokens(correlationId, conclusionPrompt);
     const conclusionTokenCount = await tokenizer.countTokens(correlationId, conclusion);
     return {
@@ -158,7 +158,7 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
                 const answerPrompt = MODEL_ANSWER_PROMPT(input, query, recursedNote, recursedQuery);
                 log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
                 const {content: answer_} = await common.chatWithRetry(
-                    correlationId, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null, null);
+                    correlationId, null, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null, null);
                 answer = answer_;
                 answerPromptTokenCount = await tokenizer.countTokens(correlationId, answerPrompt);
                 answerTokenCount = await tokenizer.countTokens(correlationId, answer);

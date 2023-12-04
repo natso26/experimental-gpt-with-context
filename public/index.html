@@ -132,13 +132,57 @@
                 },
                 body: JSON.stringify({userId, sessionId, query}),
             });
-            const end = Date.now();
             if (!resp.ok) {
+                const end = Date.now();
                 const error = await resp.json();
                 onResp({error}, JSON.stringify(error, null, 2), `${Math.round((end - start) / 1000)}s (failed)`);
             } else {
-                const data = await resp.json();
-                onResp({data}, data.reply, `${data.reply.length} chars, ${Math.round((end - start) / 1000)}s`);
+                let partialReply = '';
+                let progress = '';
+                const reader = resp.body.getReader();
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) {
+                        break;
+                    }
+                    const end = Date.now();
+                    const lines = new TextDecoder().decode(value).split('\n');
+                    for (const line of lines) {
+                        if (!line) {
+                            continue;
+                        }
+                        if (!line.startsWith('data: ')) {
+                            console.log('invalid line:', line);
+                            continue;
+                        }
+                        const data = JSON.parse(line.slice(6));
+                        const {state, data: data_} = data;
+                        switch (state) {
+                            case 'ongoing':
+                                switch (data_.event) {
+                                    case 'subtask':
+                                        partialReply = '';
+                                        progress += `\ndone – ${data_.kind}\n`
+                                        onResp({data}, progress, `${Math.round((end - start) / 1000)}s`);
+                                        break;
+                                    case 'reply':
+                                        if (!data_.reply) {
+                                            partialReply += data_.diff || '';
+                                        } else {
+                                            partialReply = data_.reply;
+                                        }
+                                        onResp({data}, partialReply, `${Math.round((end - start) / 1000)}s`);
+                                }
+                                break;
+                            case 'success':
+                                onResp({data}, data_.reply, `${data_.reply.length} chars, ${Math.round((end - start) / 1000)}s`);
+                                break;
+                            case 'error':
+                                onResp({data}, JSON.stringify(data_, null, 2), `${Math.round((end - start) / 1000)}s (failed)`);
+                                break;
+                        }
+                    }
+                }
             }
         } catch (e) {
             const end = Date.now();
