@@ -48,6 +48,31 @@ const wrapHandler = (name, handlerFn) => async (req, res) => {
     })(req.correlationId);
 };
 
+const wrapHandlerSse = (name, handlerFn) => async (req, res) => {
+    const doWrite = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+    await wrapper.logCorrelationId(name, async (correlationId) => {
+        try {
+            const {body} = req;
+            log.log(`${name} ${correlationId} request body`, {name, correlationId, body});
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+            });
+            const onPartial = (partial) => doWrite({state: 'ongoing', data: partial});
+            const ret = await handlerFn(correlationId, onPartial, body);
+            log.log(`${name} ${correlationId} response body`, {name, correlationId, ret});
+            doWrite({state: 'success', data: ret});
+        } catch (e) {
+            const ret = {error: e.message ?? ''};
+            log.log(`${name} ${correlationId} response error`, {name, correlationId, ...ret, stack: e.stack ?? ''});
+            doWrite({state: 'error', data: ret});
+        } finally {
+            res.end();
+        }
+    })(req.correlationId);
+};
+
 const indexHandler = async (req, res) => {
     log.log(`send ${INDEX_HTML_FILE}`);
     res.sendFile(INDEX_HTML_FILE, {root: HTML_FILES_ROOT_PATH});
@@ -68,7 +93,7 @@ app.use(common.API_ROUTE_PREFIX, correlationIdMiddleware, express.json());
 app.use(common.INTERNAL_ROUTE_PREFIX, internalApiAuthMiddleware, correlationIdMiddleware, express.json());
 app.get(common.INDEX_ROUTE, indexHandler);
 app.get(common.HISTORY_ROUTE, historyHandler);
-app.post(common.QUERY_API_ROUTE, wrapHandler(common.QUERY_API_ROUTE, query.externalQuery));
+app.post(common.QUERY_API_ROUTE, wrapHandlerSse(common.QUERY_API_ROUTE, query.externalQuery));
 app.post(common.HISTORY_API_ROUTE, wrapHandler(common.HISTORY_API_ROUTE, history.externalHistory));
 app.get(common.PING_INTERNAL_ROUTE, pingInternalHandler);
 app.post(common.QUERY_INTERNAL_ROUTE, wrapHandler(common.QUERY_INTERNAL_ROUTE, query.internalQuery));

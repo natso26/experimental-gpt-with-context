@@ -93,7 +93,7 @@ const RECURSION_TIMEOUT = strictParse.int(process.env.QUERY_RECURSION_TIMEOUT_SE
 const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 
-const query = wrapper.logCorrelationId('service.active.query.query', async (correlationId, userId, sessionId, query, recursedNote, recursedQuery) => {
+const query = wrapper.logCorrelationId('service.active.query.query', async (correlationId, onPartial, userId, sessionId, query, recursedNote, recursedQuery) => {
     log.log('query: parameters',
         {correlationId, userId, sessionId, query, recursedNote, recursedQuery});
     const docId = common.DOC_ID.from(userId, sessionId);
@@ -146,6 +146,8 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             return {queryEmbedding, shortTermContext, longTermContext};
         })(),
     ]);
+    const onPartialChat =
+        !onPartial ? null : ({content}) => onPartial({event: 'reply', content});
     const actions = [];
     const formattedActionsForPrompt = [];
     const prompts = [];
@@ -167,7 +169,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
         const startLocalChat = new Date();
         const {content: localReply, functionCalls: localFunctionCalls} = await common.chatWithRetry(
-            correlationId, localPrompt, REPLY_TOKEN_COUNT_LIMIT, actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null);
+            correlationId, onPartialChat, localPrompt, REPLY_TOKEN_COUNT_LIMIT, actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null);
         const elapsedLocalChat = time.elapsedSecs(startLocalChat);
         elapsedChats.push(elapsedLocalChat);
         const localPromptTokenCount = await tokenizer.countTokens(correlationId, localPrompt);
@@ -280,6 +282,9 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 log.log(`query: iter ${i}: function call: add action failed; continue since it is not critical`, {
                     correlationId, docId, i, actionLvl, error: e.message || '', stack: e.stack || '',
                 }));
+            if (onPartial) {
+                onPartial({event: 'subtask', kind});
+            }
         }));
         const rawLocalActions = (await Promise.all(localActionTasks))
             .filter(({full}) => full);
