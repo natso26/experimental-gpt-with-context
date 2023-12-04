@@ -10,6 +10,7 @@ const TOP_P = .001;
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
 
 const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, content, maxTokens, shortCircuitHook, fn) => {
+    const start = Date.now();
     const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -48,7 +49,13 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         log.log(msg, {correlationId, body});
         throw new Error(msg);
     }
-    const data = await streamReadBody(correlationId, resp, shortCircuitHook);
+    const data = await streamReadBody(correlationId, resp, start, shortCircuitHook);
+    try {
+        resp.body.destroy(); // early return
+    } catch (e) {
+        log.log('chat completions api: problem destroying response body',
+            {correlationId, error: e.message || '', stack: e.stack || ''});
+    }
     const {content: content_, toolCalls} = data;
     const functionCalls = toolCalls.map((call) => {
         const {name, args: rawArgs} = call;
@@ -72,7 +79,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     };
 });
 
-const streamReadBody = async (correlationId, resp, shortCircuitHook) => {
+const streamReadBody = async (correlationId, resp, start, shortCircuitHook) => {
     let content = '';
     let toolCalls = [];
     const processChunk = (chunk) => {
@@ -125,6 +132,10 @@ const streamReadBody = async (correlationId, resp, shortCircuitHook) => {
                 }
             }
             currChunk = line.slice(6); // length of 'data: '
+        }
+        if (Date.now() - start > TIMEOUT) { // separate from req timeout
+            log.log('chat completions api: timeout', {correlationId});
+            break;
         }
     }
     if (currChunk) {
