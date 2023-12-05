@@ -169,14 +169,14 @@
                     }
                 }
                 let currChunk = '';
-                while (true) {
+                readLoop: while (true) {
                     const {done, value} = await reader.read();
                     if (done) break;
                     const lines = new TextDecoder().decode(value).split('\n');
                     for (const line of lines) {
                         if (!line) {
                             if (currChunk) {
-                                if (processChunk(currChunk)) return;
+                                if (processChunk(currChunk)) break readLoop;
                                 currChunk = '';
                             }
                         } else if (!currChunk) {
