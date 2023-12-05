@@ -27,6 +27,7 @@ const INTROSPECTION_FIELD = 'introspection';
 const INTROSPECTION_EMBEDDING_FIELD = 'introspectionEmbedding';
 const IMAGINATION_FIELD = 'imagination';
 const IMAGINATION_EMBEDDING_FIELD = 'imaginationEmbedding';
+const MODEL_PROMPT_CORE_MSG = 'Be authentic.';
 const MODEL_PROMPT_EXTERNAL_COMPONENT_MSG = 'This is an external component.';
 const MODEL_PROMPT_INTERNAL_COMPONENT_MSG = 'This is an internal component.';
 const MODEL_PROMPT_FORMATTED_TIME = () => new Date().toISOString();
@@ -154,6 +155,7 @@ export default {
     INTROSPECTION_EMBEDDING_FIELD,
     IMAGINATION_FIELD,
     IMAGINATION_EMBEDDING_FIELD,
+    MODEL_PROMPT_CORE_MSG,
     MODEL_PROMPT_EXTERNAL_COMPONENT_MSG,
     MODEL_PROMPT_INTERNAL_COMPONENT_MSG,
     MODEL_PROMPT_FORMATTED_TIME,

@@ -6,13 +6,13 @@ import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
 import time from '../../util/time.js';
 
-const MODEL_PROMPT_SCORE_FIELD = 'score';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
-    common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
+    common.MODEL_PROMPT_CORE_MSG
+    + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
     + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
     + `\ncontext: ${JSON.stringify(context)}`
-    + `\nthoughts`;
+    + `\nshort story`;
 const CONTEXT_SCORE = (rand, sim) => {
     return Math.exp(rand * Math.log(sim));
 };
@@ -53,13 +53,9 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
         const context = rawContext.map(([{
             [common.SUMMARY_FIELD]: summary,
             [common.IMAGINATION_FIELD]: imagination,
-        }, rawScore]) => {
-            const score = parseFloat(rawScore.toFixed(3));
-            return {
-                [MODEL_PROMPT_SCORE_FIELD]: score,
-                [MODEL_PROMPT_TEXT_FIELD]: !imagination ? summary : imagination,
-            };
-        });
+        },]) => ({
+            [MODEL_PROMPT_TEXT_FIELD]: !imagination ? summary : imagination,
+        }));
         log.log(`imagine: context for doc ID ${docId}`, {correlationId, docId, context});
         const prompt = MODEL_PROMPT(context);
         log.log('imagine: prompt', {correlationId, docId, prompt});

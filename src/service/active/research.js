@@ -9,7 +9,8 @@ import time from '../../util/time.js';
 
 const ACTION_LVL = 1; // NB: research is immediate subtask
 const MODEL_ANSWER_PROMPT = (input, query, recursedNote, recursedQuery) =>
-    common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
+    common.MODEL_PROMPT_CORE_MSG
+    + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
     + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
     + `\ninput: ${input}`
     + `\nquery: ${JSON.stringify(query)}`
@@ -17,7 +18,8 @@ const MODEL_ANSWER_PROMPT = (input, query, recursedNote, recursedQuery) =>
     + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`
     + `\nsynthesize`;
 const MODEL_CONCLUSION_PROMPT = (answers, query, recursedNote, recursedQuery) =>
-    common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
+    common.MODEL_PROMPT_CORE_MSG
+    + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
     + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
     + `\nanswers: ${JSON.stringify(answers)}`
     + `\nquery: ${JSON.stringify(query)}`

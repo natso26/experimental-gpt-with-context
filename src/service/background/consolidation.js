@@ -11,7 +11,8 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
-    common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG
+    common.MODEL_PROMPT_CORE_MSG
+    + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
     + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
     + `\ncontext: ${JSON.stringify(context)}`
     + `\nconsolidate`;
