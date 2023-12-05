@@ -141,7 +141,11 @@
                     const data = JSON.parse(chunk);
                     const {state, data: data_} = data;
                     switch (state) {
-                        case 'ongoing':
+                        case 'keepalive':
+                            progress += '.';
+                            onResp({data}, partialReply || progress, formattedElapsed());
+                            return false;
+                        case 'partial':
                             switch (data_.event) {
                                 case 'task':
                                     partialReply = '';
@@ -154,14 +158,14 @@
                                     onResp({data}, partialReply, formattedElapsed());
                                     break;
                             }
-                            break;
+                            return false;
                         case 'success':
                             const {reply} = data_;
                             onResp({data}, reply, `${reply.length} chars, ${formattedElapsed()}`);
-                            break;
+                            return true;
                         case 'error':
                             onResp({data}, JSON.stringify(data_, null, 2), `${formattedElapsed()} (failed)`);
-                            break;
+                            return true;
                     }
                 }
                 let currChunk = '';
@@ -170,16 +174,18 @@
                     if (done) break;
                     const lines = new TextDecoder().decode(value).split('\n');
                     for (const line of lines) {
-                        if (!line) continue;
-                        if (!line.startsWith('data: ')) {
-                            currChunk += line;
-                            continue;
-                        }
-                        currChunk && processChunk(currChunk);
-                        currChunk = line.slice(6);
+                        console.log(line);
+                        if (!line) {
+                            if (currChunk) {
+                                if (processChunk(currChunk)) return;
+                                currChunk = '';
+                            }
+                        } else if (!currChunk) {
+                            if (!line.startsWith('data: ')) console.log('invalid line', line);
+                            else currChunk = line.slice(6);
+                        } else currChunk += line;
                     }
                 }
-                currChunk && processChunk(currChunk);
             }
         } catch (e) {
             onResp({e: {error: e.message || '', stack: e.stack || ''}},

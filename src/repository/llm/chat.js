@@ -83,15 +83,13 @@ const streamReadBody = async (correlationId, onPartial, resp, start, shortCircui
     let content = '';
     let toolCalls = [];
     const processChunk = (chunk) => {
-        if (chunk === '[DONE]') {
-            return;
-        }
         try {
             const chunkData = JSON.parse(chunk);
-            const {content: chunkContent, tool_calls: chunkToolCalls} = chunkData.choices[0].delta;
+            const {delta: {content: chunkContent, tool_calls: chunkToolCalls}, finish_reason: chunkFinishReason}
+                = chunkData.choices[0];
             if (chunkContent) {
                 content += chunkContent;
-                if (onPartial) {
+                if (!chunkFinishReason && onPartial) {
                     onPartial({content});
                 }
             }
@@ -109,40 +107,49 @@ const streamReadBody = async (correlationId, onPartial, resp, start, shortCircui
                     }
                 }
             }
+            if (chunkFinishReason) { // minor optimization
+                return true;
+            }
         } catch (e) {
             log.log(`chat completions api: invalid json for chunk: ${chunk}`,
                 {correlationId, chunk, error: e.message || '', stack: e.stack || ''});
         }
+        return false;
     };
     let currChunk = '';
-    for await (const s of resp.body) {
-        const lines = s.toString().split('\n');
+    for await (const b of resp.body) {
+        const lines = b.toString().split('\n');
         for (const line of lines) {
             if (!line) {
-                continue;
-            }
-            if (!line.startsWith('data: ')) {
-                currChunk += line;
-                continue;
-            }
-            if (currChunk) {
-                processChunk(currChunk);
-                const shortCircuit = shortCircuitHook?.({content, toolCalls});
-                if (shortCircuit) {
-                    log.log('chat completions api: short circuiting',
-                        {correlationId, content, toolCalls});
-                    return shortCircuit;
+                if (!currChunk) { // pass
+                } else {
+                    const isDone = processChunk(currChunk);
+                    if (isDone) {
+                        return {content, toolCalls};
+                    }
+                    const shortCircuit = shortCircuitHook?.({content, toolCalls});
+                    if (shortCircuit) {
+                        log.log('chat completions api: short circuiting',
+                            {correlationId, content, toolCalls});
+                        return shortCircuit;
+                    }
+                    currChunk = '';
                 }
+            } else if (!currChunk) {
+                if (!line.startsWith('data: ')) {
+                    log.log(`chat completions api: invalid line: ${line}`,
+                        {correlationId, line});
+                } else {
+                    currChunk = line.slice(6); // length of 'data: '
+                }
+            } else {
+                currChunk += line;
             }
-            currChunk = line.slice(6); // length of 'data: '
         }
         if (Date.now() - start > TIMEOUT) { // separate from req timeout
             log.log('chat completions api: timeout', {correlationId});
             break;
         }
-    }
-    if (currChunk) {
-        processChunk(currChunk);
     }
     return {content, toolCalls};
 };
