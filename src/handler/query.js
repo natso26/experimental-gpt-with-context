@@ -14,9 +14,9 @@ const externalQuery = wrapper.logCorrelationId('handler.query.externalQuery', as
     let partialReply = '';
     const onPartial_ = !onPartial ? null : (o) => {
         switch (o.event) {
-            case 'subtask':
+            case 'task':
                 partialReply = '';
-                onPartial({event: 'subtask', kind: o.kind});
+                onPartial({event: 'task', kind: o.kind});
                 break;
             case 'reply':
                 const oldPartialReply = partialReply;

@@ -8,12 +8,14 @@ import introspect from './handler/introspect.js';
 import imagine from './handler/imagine.js';
 import research from './handler/research.js';
 import common from './common.js';
+import strictParse from './util/strictParse.js';
 import log from './util/log.js';
 import wrapper from './util/wrapper.js';
 
 const HTML_FILES_ROOT_PATH = './public';
 const INDEX_HTML_FILE = 'index.html';
 const HISTORY_HTML_FILE = 'history.html';
+const SSE_KEEPALIVE_INTERVAL = strictParse.int(process.env.APP_SSE_KEEPALIVE_INTERVAL_SECS) * 1000;
 
 const internalApiAuthMiddleware = (req, res, next) => {
     const v = req.headers[common.INTERNAL_API_ACCESS_KEY_HEADER.toLowerCase()] || '';
@@ -51,6 +53,7 @@ const wrapHandler = (name, handlerFn) => async (req, res) => {
 const wrapHandlerSse = (name, handlerFn) => async (req, res) => {
     const doWrite = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
     await wrapper.logCorrelationId(name, async (correlationId) => {
+        let intervalId;
         try {
             const {body} = req;
             log.log(`${name} ${correlationId} request body`, {name, correlationId, body});
@@ -59,7 +62,9 @@ const wrapHandlerSse = (name, handlerFn) => async (req, res) => {
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
             });
-            const onPartial = (partial) => doWrite({state: 'ongoing', data: partial});
+            const onPartial = (partial) => doWrite({state: 'partial', data: partial});
+            // NB: counteract buffering
+            intervalId = setInterval(() => doWrite({state: 'keepalive', data: {}}), SSE_KEEPALIVE_INTERVAL);
             const ret = await handlerFn(correlationId, onPartial, body);
             log.log(`${name} ${correlationId} response body`, {name, correlationId, ret});
             doWrite({state: 'success', data: ret});
@@ -68,6 +73,9 @@ const wrapHandlerSse = (name, handlerFn) => async (req, res) => {
             log.log(`${name} ${correlationId} response error`, {name, correlationId, ...ret, stack: e.stack ?? ''});
             doWrite({state: 'error', data: ret});
         } finally {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
             res.end();
         }
     })(req.correlationId);

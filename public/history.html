@@ -113,6 +113,10 @@
         p.set('limit', limitInput.value.trim());
         window.history.pushState({}, '', url);
     };
+    const onResp = (debug, history) => {
+        console.log(debug);
+        historyBox.value = history;
+    };
     const p = new URL(window.location.href).searchParams;
     const userId = p.get('userId') || '';
     sessionIdBox.value = p.get('sessionId') || '';
@@ -133,29 +137,24 @@
         try {
             const resp = await fetch('/api/history', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    userId, sessionId, offset, limit,
-                }),
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({userId, sessionId, offset, limit}),
             });
             if (!resp.ok) {
                 const error = await resp.json();
-                console.log({error});
-                historyBox.value = JSON.stringify(error, null, 2);
+                onResp({error}, JSON.stringify(error, null, 2));
             } else {
                 const data = await resp.json();
-                console.log({data});
                 let history = '';
                 for (const [i, {query, reply}] of data.history.reverse().entries()) {
-                    history += `\n=== Query ${-(offset + i)} ===\n\n${query}\n\n=== Reply ${-(offset + i)} ===\n\n${reply}\n\n`;
+                    const n = -(offset + i);
+                    history += `\n=== Query ${n} ===\n\n${query}\n\n=== Reply ${n} ===\n\n${reply}\n\n`;
                 }
-                historyBox.value = history;
+                onResp({data}, history);
             }
         } catch (e) {
-            console.log({e});
-            historyBox.value = e.message || 'There was an error fetching the response.';
+            onResp({e: {error: e.message || '', stack: e.stack || ''}},
+                e.message || 'There was an error fetching the response.');
         }
         sessionIdBox.disabled = false;
         offsetInput.disabled = false;
