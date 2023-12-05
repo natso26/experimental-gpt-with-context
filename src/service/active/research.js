@@ -119,6 +119,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             conclusionPrompt: conclusionPromptTokenCount,
             conclusion: conclusionTokenCount,
         },
+        roughCost: common.sum(answers.map((v) => v.roughCost || 0)) + common.CHAT_COST(conclusionPromptTokenCount, conclusionTokenCount),
     };
 });
 
@@ -180,6 +181,7 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
             answerPrompt: answerPromptTokenCount,
             answer: answerTokenCount,
         },
+        roughCost: common.CHAT_COST(answerPromptTokenCount, answerTokenCount),
     };
 };
 

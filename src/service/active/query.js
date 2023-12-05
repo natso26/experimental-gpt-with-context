@@ -338,6 +338,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             prompts: promptTokenCounts,
             reply: replyTokenCount,
         },
+        roughCost: common.sum(actions.map(({v}) => common.sum(v.map((v) => v.data?.roughCost || 0)))) + common.CHAT_COST(common.sum(promptTokenCounts), replyTokenCount),
         timeStats: {
             elapsed,
             elapsedChats,
