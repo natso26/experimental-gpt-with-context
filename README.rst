@@ -1,5 +1,5 @@
-Existence
-=========
+Inventio
+========
 
 
 Data
@@ -34,7 +34,7 @@ Mechanism
 
 3. Introspection. Analyze ``(query, reply)`` some time after user becomes idle.
 
-4. Imagination. Scheduled thoughts on random related selection of ``summary``, ``imagination``.
+4. Imagination. Story on random related selection of ``summary``, ``imagination``.
 
 5. Action. Launch subtasks.
 
