@@ -283,7 +283,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                     correlationId, docId, i, actionLvl, error: e.message || '', stack: e.stack || '',
                 }));
             if (onPartial) {
-                onPartial({event: 'subtask', kind});
+                onPartial({event: 'task', kind});
             }
         }));
         const rawLocalActions = (await Promise.all(localActionTasks))

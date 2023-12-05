@@ -92,8 +92,7 @@
     const noteArea = document.getElementById('note');
     const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
         const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
     });
     const updateUrls = () => {
         const sessionId = sessionIdBox.value.trim();
@@ -124,87 +123,80 @@
         queryBox.disabled = true;
         submitButton.disabled = true;
         const start = Date.now();
+        const formattedElapsed = () => `${Math.round((Date.now() - start) / 1000)}s`;
         try {
             const resp = await fetch('/api/query', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({userId, sessionId, query}),
             });
             if (!resp.ok) {
-                const end = Date.now();
                 const error = await resp.json();
-                onResp({error}, JSON.stringify(error, null, 2), `${Math.round((end - start) / 1000)}s (failed)`);
+                onResp({error}, JSON.stringify(error, null, 2), `${formattedElapsed()} (failed)`);
             } else {
                 let partialReply = '';
                 let progress = '';
                 const reader = resp.body.getReader();
-                while (true) {
-                    const {done, value} = await reader.read();
-                    if (done) {
-                        break;
-                    }
-                    const end = Date.now();
-                    const lines = new TextDecoder().decode(value).split('\n');
-                    for (const line of lines) {
-                        if (!line) {
-                            continue;
-                        }
-                        if (!line.startsWith('data: ')) {
-                            console.log('invalid line:', line);
-                            continue;
-                        }
-                        const data = JSON.parse(line.slice(6));
-                        const {state, data: data_} = data;
-                        switch (state) {
-                            case 'ongoing':
-                                switch (data_.event) {
-                                    case 'subtask':
-                                        partialReply = '';
-                                        progress += `\ndone – ${data_.kind}\n`
-                                        onResp({data}, progress, `${Math.round((end - start) / 1000)}s`);
-                                        break;
-                                    case 'reply':
-                                        if (!data_.reply) {
-                                            partialReply += data_.diff || '';
-                                        } else {
-                                            partialReply = data_.reply;
-                                        }
-                                        onResp({data}, partialReply, `${Math.round((end - start) / 1000)}s`);
-                                }
-                                break;
-                            case 'success':
-                                onResp({data}, data_.reply, `${data_.reply.length} chars, ${Math.round((end - start) / 1000)}s`);
-                                break;
-                            case 'error':
-                                onResp({data}, JSON.stringify(data_, null, 2), `${Math.round((end - start) / 1000)}s (failed)`);
-                                break;
-                        }
+                const processChunk = (chunk) => {
+                    const data = JSON.parse(chunk);
+                    const {state, data: data_} = data;
+                    switch (state) {
+                        case 'ongoing':
+                            switch (data_.event) {
+                                case 'task':
+                                    partialReply = '';
+                                    progress += `\ndone – ${data_.kind}\n`
+                                    onResp({data}, progress, formattedElapsed());
+                                    break;
+                                case 'reply':
+                                    if (!data_.reply) partialReply += data_.diff || '';
+                                    else partialReply = data_.reply;
+                                    onResp({data}, partialReply, formattedElapsed());
+                                    break;
+                            }
+                            break;
+                        case 'success':
+                            const {reply} = data_;
+                            onResp({data}, reply, `${reply.length} chars, ${formattedElapsed()}`);
+                            break;
+                        case 'error':
+                            onResp({data}, JSON.stringify(data_, null, 2), `${formattedElapsed()} (failed)`);
+                            break;
                     }
                 }
+                let currChunk = '';
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    const lines = new TextDecoder().decode(value).split('\n');
+                    for (const line of lines) {
+                        if (!line) continue;
+                        if (!line.startsWith('data: ')) {
+                            currChunk += line;
+                            continue;
+                        }
+                        currChunk && processChunk(currChunk);
+                        currChunk = line.slice(6);
+                    }
+                }
+                currChunk && processChunk(currChunk);
             }
         } catch (e) {
-            const end = Date.now();
             onResp({e: {error: e.message || '', stack: e.stack || ''}},
-                e.message || 'There was an error fetching the response.', `${Math.round((end - start) / 1000)}s (failed)`);
+                e.message || 'There was an error fetching the response.', `${formattedElapsed()} (failed)`);
         }
         sessionIdBox.disabled = false;
         queryBox.disabled = false;
         submitButton.disabled = false;
     });
     noteArea.addEventListener('click', () => {
-        if (isdebugRespBeingCopied) {
-            return;
-        }
+        if (isdebugRespBeingCopied) return;
         isdebugRespBeingCopied = true;
         navigator.clipboard.writeText(JSON.stringify(debugResp, null, 2));
         const note = noteArea.innerText;
         noteArea.innerText = '(response copied)';
         setTimeout(() => {
-            if (!isdebugRespBeingCopied) {
-                return;
-            }
+            if (!isdebugRespBeingCopied) return;
             noteArea.innerText = note;
             isdebugRespBeingCopied = false;
         }, 750);
