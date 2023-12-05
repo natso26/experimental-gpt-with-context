@@ -174,7 +174,6 @@
                     if (done) break;
                     const lines = new TextDecoder().decode(value).split('\n');
                     for (const line of lines) {
-                        console.log(line);
                         if (!line) {
                             if (currChunk) {
                                 if (processChunk(currChunk)) return;
