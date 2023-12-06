@@ -4,6 +4,7 @@ import chat from '../repository/llm/chat.js';
 import wolframAlpha from '../repository/web/wolframAlpha.js';
 import serp from '../repository/web/serp.js';
 import scraper from '../repository/web/scraper.js';
+import number from '../util/number.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
 
@@ -36,9 +37,11 @@ const CHAT_RETRY_COUNT = strictParse.int(process.env.CHAT_REPOSITORY_RETRY_COUNT
 const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_REPOSITORY_RETRY_COUNT);
 const SERP_SEARCH_RETRY_COUNT = strictParse.int(process.env.SERP_SEARCH_REPOSITORY_RETRY_COUNT);
 const SCRAPER_EXTRACT_RETRY_COUNT = strictParse.int(process.env.SCRAPER_EXTRACT_REPOSITORY_RETRY_COUNT);
-const CHAT_COST = (inTokens, outTokens) => inTokens * 1e-5 + outTokens * 3e-5;
-
-const sum = (arr) => arr.reduce((acc, v) => acc + v, 0);
+const CHAT_COST = (() => {
+    const f = (inTokens, outTokens) => number.round(inTokens * 1e-5 + outTokens * 3e-5, 5);
+    f.sum = (arr) => number.round(number.sum(arr), 5);
+    return f;
+})();
 
 // NB: abs rather than linear scaling
 const absCosineSimilarity = (a, b) => {
@@ -163,7 +166,6 @@ export default {
     MODEL_PROMPT_INTERNAL_COMPONENT_MSG,
     MODEL_PROMPT_FORMATTED_TIME,
     CHAT_COST,
-    sum,
     absCosineSimilarity,
     embedWithRetry,
     chatWithRetry,
