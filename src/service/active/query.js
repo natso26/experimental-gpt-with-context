@@ -4,6 +4,7 @@ import memory from '../../repository/db/memory.js';
 import common from '../common.js';
 import common_ from '../../common.js';
 import fetch_ from '../../util/fetch.js';
+import number from '../../util/number.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
@@ -46,8 +47,6 @@ const MODEL_FUNCTION_KIND_THINK = 'think';
 const MODEL_FUNCTION_KIND_RESEARCH = 'research';
 const MODEL_FUNCTION_KIND_REPLY = 'reply'; // NB: way out to not launch subtask
 const MODEL_FUNCTION_KINDS = [MODEL_FUNCTION_KIND_THINK, MODEL_FUNCTION_KIND_RESEARCH, MODEL_FUNCTION_KIND_REPLY];
-// NB: mechanism prone to collapse: recursing to same query, repeating previous actions, using single action kind;
-//  issues are traded off but not perfectly resolved
 const MODEL_FUNCTION = {
     name: MODEL_FUNCTION_NAME,
     description: '',
@@ -338,7 +337,9 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             prompts: promptTokenCounts,
             reply: replyTokenCount,
         },
-        roughCost: common.sum(actions.map(({v}) => common.sum(v.map((v) => v.data?.roughCost || 0)))) + common.CHAT_COST(common.sum(promptTokenCounts), replyTokenCount),
+        roughCost: common.CHAT_COST.sum([
+            ...actions.flatMap(({v}) => v.map((e) => e.data?.roughCost)),
+            common.CHAT_COST(number.sum(promptTokenCounts), replyTokenCount)]),
         timeStats: {
             elapsed,
             elapsedChats,
@@ -485,7 +486,7 @@ const getShortTermContext = async (correlationId, docId, start, doSim) => {
         [common.REPLY_FIELD]: reply,
         [common.INTROSPECTION_FIELD]: introspection,
     }, rawScore]) => {
-        const score = parseFloat(rawScore.toFixed(3));
+        const score = number.round(rawScore, 3);
         return !introspection ? {
             [MODEL_PROMPT_SCORE_FIELD]: score,
             [MODEL_PROMPT_QUERY_FIELD]: query,
