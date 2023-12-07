@@ -49,7 +49,6 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
         const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
         const summaryTokenCount = await tokenizer.countTokens(correlationId, summary);
-        const elapsed = time.elapsedSecs(start);
         const extra = {
             correlationId,
             context,
@@ -58,7 +57,7 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
                 summary: summaryTokenCount,
             },
             timeStats: {
-                elapsed,
+                elapsed: time.elapsedSecs(start),
                 elapsedChat,
             },
         };

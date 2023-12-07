@@ -52,3 +52,13 @@ Engineering
 - Consolidation, introspection by HTTP requests keeping Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
 - Frontend of query and history pages; VanillaJS.
+
+
+Local run
+---------
+
+0. Pay for Firestore and external APIs.
+1. Have ``node``.
+2. ``npm install``.
+3. ``cp env_data/.dev.env .env``; edit ``.env`` following in-file instructions.
+4. ``npm start``.

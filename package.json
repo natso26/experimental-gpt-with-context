@@ -1,6 +1,6 @@
 {
   "name": "experimental-gpt-with-context",
-  "version": "2023.12.6.1",
+  "version": "2023.12.7",
   "author": "Nat Sothanaphan - NatSo",
   "license": "MIT",
   "description": "",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google-cloud/firestore": "^7.1.0",
+    "@google-cloud/run": "^1.0.2",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "js-tiktoken": "^1.0.8",
