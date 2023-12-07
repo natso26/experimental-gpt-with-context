@@ -146,6 +146,30 @@ const mapDropConflict = () => {
     };
 };
 
+const warnings = () => {
+    const warnings = {normal: [], strong: []};
+    const f = (message, extra = {}) => {
+        log.log(message, extra);
+        warnings.normal.push(message);
+    };
+    f.strong = (message, extra = {}) => {
+        log.log(message, extra);
+        warnings.strong.push(message);
+    };
+    f.merge = (other) => {
+        warnings.normal.push(...other?.normal || []);
+        warnings.strong.push(...other?.strong || []);
+    };
+    f.get = () => {
+        const {normal, strong} = warnings;
+        return !(normal.length || strong.length) ? null : {
+            ...(!strong.length ? {} : {strong}),
+            ...(!normal.length ? {} : {normal}),
+        };
+    };
+    return f;
+};
+
 export default {
     DOC_ID,
     KIND_FIELD,
@@ -173,4 +197,5 @@ export default {
     serpSearchWithRetry,
     scraperExtractWithRetry,
     shortCircuitAutocompleteContentHook,
+    warnings,
 };

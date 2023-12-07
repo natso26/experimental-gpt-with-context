@@ -73,10 +73,12 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             };
         }
     });
-    return {
+    const out = {
         content: content_,
         functionCalls,
     };
+    log.log('chat completions api: out', {correlationId, out});
+    return out;
 });
 
 const streamReadBody = async (correlationId, onPartial, resp, start, shortCircuitHook) => {

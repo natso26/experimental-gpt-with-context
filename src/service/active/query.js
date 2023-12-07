@@ -96,6 +96,7 @@ const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SC
 const query = wrapper.logCorrelationId('service.active.query.query', async (correlationId, onPartial, userId, sessionId, query, recursedNote, recursedQuery) => {
     log.log('query: parameters',
         {correlationId, userId, sessionId, query, recursedNote, recursedQuery});
+    const warnings = common.warnings();
     const baseUrlTask = host.getBaseUrl(correlationId).then((baseUrl) => {
         log.log('query: base url', {correlationId, baseUrl});
         return baseUrl;
@@ -116,13 +117,13 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             if (!recursedQuery) {
                 return {info: '', infoTokenCount: 0};
             }
-            return await getInfo(correlationId, docId, recursedQuery);
+            return await getInfo(correlationId, docId, recursedQuery, warnings);
         })(),
         (async () => {
             if (!recursedQuery) {
                 return {search: '', searchTokenCount: 0};
             }
-            return await getSearch(correlationId, docId, recursedQuery);
+            return await getSearch(correlationId, docId, recursedQuery, warnings);
         })(),
         getActionHistory(correlationId, docId, actionLvl),
         (async () => {
@@ -236,9 +237,12 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                         break;
                 }
                 const {reply: reply_, data: data_} = await actionFn(
-                    correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask);
+                    correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings);
                 const reply = reply_ || null;
                 const data = data_ || null;
+                if (data?.warnings) {
+                    warnings.merge(data?.warnings);
+                }
                 return {
                     reply,
                     data,
@@ -248,7 +252,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 };
             })());
         }
-        // NB: exclude data field to keep within firestore size limit
+        // NB: exclude data field due to firestore size limit
         const localActions = await Promise.all(rawLocalActionTasks.map((task) => task.then(async (res) => {
             const {reply, data, kind, recursedNextNote, recursedNextQuery} = res;
             if (!reply || kind === MODEL_FUNCTION_KIND_REPLY) {
@@ -272,7 +276,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 [common.RECURSED_QUERY_FIELD]: recursedNextQuery,
                 [common.REPLY_FIELD]: reply,
             }, actiobDbExtra).catch((e) => {
-                log.log(`query: iter ${i}: function call: add action failed; continue to not block`,
+                warnings.strong(`query: iter ${i}: function call: add action failed; warn`,
                     {correlationId, docId, i, actionLvl, error: e.message || '', stack: e.stack || ''});
                 return {index: null, timestamp: null};
             });
@@ -342,6 +346,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         return {
             reply,
             ...extra,
+            warnings: warnings.get(),
         };
     }
     const [
@@ -353,6 +358,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             const dbExtra = {
                 ...extra,
                 prompts,
+                warnings: warnings.get(),
             };
             return await memory.add(correlationId, docId, {
                 [common.QUERY_FIELD]: query,
@@ -361,14 +367,14 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
             }, dbExtra, false);
         })().catch((e) => {
-            log.log('query: add failed; continue to not block',
+            warnings.strong('query: add failed; warn',
                 {correlationId, docId, error: e.message || '', stack: e.stack || ''});
             return {index: null, timestamp: null};
         }),
-        setScheduledImagination(correlationId, docId),
+        setScheduledImagination(correlationId, docId, warnings),
     ]);
     if (index) {
-        await triggerBackgroundTasks(correlationId, docId, index, baseUrlTask);
+        await triggerBackgroundTasks(correlationId, docId, index, baseUrlTask, warnings);
     }
     return {
         index,
@@ -376,6 +382,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         reply,
         ...extra,
         scheduledImagination,
+        warnings: warnings.get(),
     };
 });
 
@@ -406,7 +413,7 @@ const getTokenCounts = async (correlationId, docId, query, recursedNote, recurse
     return {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getInfo = async (correlationId, docId, recursedQuery) => {
+const getInfo = async (correlationId, docId, recursedQuery, warnings) => {
     let info = '';
     let infoTokenCount = 0;
     try {
@@ -418,14 +425,14 @@ const getInfo = async (correlationId, docId, recursedQuery) => {
             infoTokenCount = Math.min(tokenCount, INFO_TRUNCATION_TOKEN_COUNT);
         }
     } catch (e) {
-        log.log('query: wolfram alpha query failed; continue since it is not critical',
+        warnings('query: wolfram alpha query failed; not critical',
             {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
     }
     log.log('query: info', {correlationId, docId, info, infoTokenCount});
     return {info, infoTokenCount};
 };
 
-const getSearch = async (correlationId, docId, recursedQuery) => {
+const getSearch = async (correlationId, docId, recursedQuery, warnings) => {
     let search = '';
     let searchTokenCount = 0;
     try {
@@ -437,7 +444,7 @@ const getSearch = async (correlationId, docId, recursedQuery) => {
             searchTokenCount = Math.min(tokenCount, SEARCH_TRUNCATION_TOKEN_COUNT);
         }
     } catch (e) {
-        log.log('query: serp search failed; continue since it is not critical',
+        warnings('query: serp search failed; not critical',
             {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
     }
     log.log('query: search', {correlationId, docId, search, searchTokenCount});
@@ -552,7 +559,7 @@ const cleanFunctionCall = (correlationId, docId, i, call) => {
     return {name: MODEL_FUNCTION_NAME, args: cleanedArgs};
 };
 
-const thinkAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask) => {
+const thinkAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
     const {userId, sessionId} = common.DOC_ID.parse(docId);
     const recursedCorrelationId = uuid.v4();
     log.log('query: action: think: correlation id',
@@ -583,7 +590,7 @@ const thinkAction = async (correlationId, docId, query, recursedNextNote, recurs
         const {reply} = data;
         return {reply, data};
     } catch (e) {
-        log.log('query: action: think: failed', {
+        warnings.strong('query: action: think: failed; warn', {
             correlationId, docId, recursedNextQuery, recursedCorrelationId,
             error: e.message || '', stack: e.stack || '',
         });
@@ -591,7 +598,7 @@ const thinkAction = async (correlationId, docId, query, recursedNextNote, recurs
     }
 };
 
-const researchAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask) => {
+const researchAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
     const {userId, sessionId} = common.DOC_ID.parse(docId);
     const recursedCorrelationId = uuid.v4();
     log.log('query: action: research: correlation id',
@@ -622,7 +629,7 @@ const researchAction = async (correlationId, docId, query, recursedNextNote, rec
         const {reply} = data;
         return {reply, data};
     } catch (e) {
-        log.log('query: action: research: failed', {
+        warnings.strong('query: action: research: failed; warn', {
             correlationId, docId, recursedNextQuery, recursedCorrelationId,
             error: e.message || '', stack: e.stack || '',
         });
@@ -630,12 +637,12 @@ const researchAction = async (correlationId, docId, query, recursedNextNote, rec
     }
 };
 
-const replyAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask) => {
+const replyAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
     const reply = recursedNextNote || '';
     return {reply};
 };
 
-const setScheduledImagination = async (correlationId, docId) => {
+const setScheduledImagination = async (correlationId, docId, warnings) => {
     return await memory.scheduleImagination(correlationId, docId, (curr) => {
         if (curr) {
             return curr;
@@ -646,13 +653,13 @@ const setScheduledImagination = async (correlationId, docId) => {
         log.log('query: scheduled imagination', {correlationId, docId, scheduledImagination});
         return scheduledImagination;
     }).catch((e) => {
-        log.log('query: schedule imagination failed; continue since it is not critical',
+        warnings('query: schedule imagination failed; not critical',
             {correlationId, docId, error: e.message || '', stack: e.stack || ''});
         return null;
     });
 };
 
-const triggerBackgroundTasks = async (correlationId, docId, index, baseUrlTask) => {
+const triggerBackgroundTasks = async (correlationId, docId, index, baseUrlTask, warnings) => {
     const {userId, sessionId} = common.DOC_ID.parse(docId);
     try {
         const baseUrl = await baseUrlTask;
@@ -682,7 +689,7 @@ const triggerBackgroundTasks = async (correlationId, docId, index, baseUrlTask) 
             log.log(`query: fetch ${common_.INTROSPECT_INTERNAL_ROUTE} failed`,
                 {correlationId, docId, error: e.message || '', stack: e.stack || ''}));
     } catch (e) {
-        log.log('query: trigger background tasks failed; continue since it is not critical',
+        warnings('query: trigger background tasks failed; not critical',
             {correlationId, docId, error: e.message || '', stack: e.stack || ''});
     }
 };
