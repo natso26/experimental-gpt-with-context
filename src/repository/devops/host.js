@@ -7,7 +7,7 @@ const CLOUD_RUN_SERVICES_CLIENT_CALL_OPTIONS = {
     maxRetries: strictParse.int(process.env.CLOUD_RUN_SERVICES_CLIENT_RETRY_COUNT),
 };
 const ENV_INFO = (() => {
-    const {ENV, GCP_PROJECT, GCP_REGION, K_REVISION, BASE_URL, NIGHTLY_BASE_URL} = process.env;
+    const {ENV, GCP_PROJECT, GCP_REGION, K_SERVICE, K_REVISION, BASE_URL, NIGHTLY_BASE_URL} = process.env;
     switch (ENV) {
         case 'local':
             if (!BASE_URL) {
@@ -18,12 +18,11 @@ const ENV_INFO = (() => {
                 baseUrl: BASE_URL,
             };
         case 'dev':
-            if (!GCP_PROJECT || !GCP_REGION || !K_REVISION || !BASE_URL || !NIGHTLY_BASE_URL) {
-                throw new Error(`dev env not properly set: ${GCP_PROJECT}, ${GCP_REGION}, ${K_REVISION}, ${BASE_URL}, ${NIGHTLY_BASE_URL}`);
+            if (!GCP_PROJECT || !GCP_REGION || !K_SERVICE || !K_REVISION || !BASE_URL || !NIGHTLY_BASE_URL) {
+                throw new Error(`dev env not properly set: ${GCP_PROJECT}, ${GCP_REGION},${K_SERVICE}, ${K_REVISION}, ${BASE_URL}, ${NIGHTLY_BASE_URL}`);
             }
-            const [service, revision_] = K_REVISION.split('.');
-            const revision = strictParse.int(revision_);
-            const name = `projects/${GCP_PROJECT}/locations/${GCP_REGION}/services/${service}`;
+            const name = `projects/${GCP_PROJECT}/locations/${GCP_REGION}/services/${K_SERVICE}`;
+            const revision = strictParse.int(K_REVISION.split('-').at(-2));
             return {
                 env: 'dev',
                 baseUrl: BASE_URL,
