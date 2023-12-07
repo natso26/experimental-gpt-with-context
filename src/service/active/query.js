@@ -601,7 +601,7 @@ const researchAction = async (correlationId, docId, query, recursedNextNote, rec
         if (!baseUrl) {
             throw new Error('query: action: research: no base url');
         }
-        const resp = await fetch_.withTimeout(RESEARCH_INTERNAL_URL(await baseUrl), {
+        const resp = await fetch_.withTimeout(RESEARCH_INTERNAL_URL(baseUrl), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

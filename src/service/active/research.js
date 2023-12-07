@@ -62,10 +62,10 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         let answer = '';
         let data = null;
         for (let j = 0; j <= RETRY_NEW_URL_COUNT; j++) {
-            const r = await getAnswer(
+            const o = await getAnswer(
                 correlationId, docId, query, recursedNote, recursedQuery, urls[currI]);
-            answer = r.answer;
-            data = r.data;
+            answer = o.answer;
+            data = o.data;
             if (answer || availableI >= urls.length || j === RETRY_NEW_URL_COUNT) {
                 break;
             }
@@ -145,7 +145,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             ...answerRoughCosts,
             common.CHAT_COST(conclusionPromptTokenCount, conclusionTokenCount)]),
     };
-})
+});
 
 const getTokenCounts = async (correlationId, docId, recursedNote, recursedQuery) => {
     let recursedNoteTokenCount = 0;
