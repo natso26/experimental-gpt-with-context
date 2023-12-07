@@ -38,7 +38,7 @@ const ENV_INFO = (() => {
 const runClient = new cloudrun.ServicesClient();
 
 // deploy stable and nightly by fixing stable and tagging nightly,
-// but calling internal apis require knowing which we currently are
+// but calling internal apis requires knowing which we currently are
 const getBaseUrl = async (correlationId) => {
     const {env, baseUrl, nightlyBaseUrl, name, revision} = ENV_INFO;
     switch (env) {

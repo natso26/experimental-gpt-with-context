@@ -40,6 +40,7 @@ const CONCLUSION_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_CONCLU
 const research = wrapper.logCorrelationId('service.active.research.research', async (correlationId, userId, sessionId, query, recursedNote, recursedQuery) => {
     log.log('research: parameters',
         {correlationId, userId, sessionId, query, recursedNote, recursedQuery});
+    const warnings = common.warnings();
     const docId = common.DOC_ID.from(userId, sessionId);
     const start = new Date();
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
@@ -52,6 +53,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             state: 'no-urls',
             elapsed: time.elapsedSecs(start),
             reply: null,
+            warnings: warnings.get(),
         };
     }
     const answerTaskCount = Math.min(URL_COUNT, urls.length);
@@ -98,7 +100,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
                 [common.RECURSED_QUERY_FIELD]: recursedQuery,
                 [common.REPLY_FIELD]: answer,
             }, actiobDbExtra).catch((e) => {
-                log.log('research: add answer failed; continue to not block',
+                warnings.strong('research: add answer failed; warn',
                     {correlationId, docId, error: e.message || '', stack: e.stack || ''});
                 return {index: null, timestamp: null};
             });
@@ -118,6 +120,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             state: 'no-answers',
             elapsed: time.elapsedSecs(start),
             reply: null,
+            warnings: warnings.get(),
         };
     }
     const answersShortCircuitHook = common.shortCircuitAutocompleteContentHook(
@@ -144,6 +147,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         roughCost: common.CHAT_COST.sum([
             ...answerRoughCosts,
             common.CHAT_COST(conclusionPromptTokenCount, conclusionTokenCount)]),
+        warnings: warnings.get(),
     };
 });
 
