@@ -55,13 +55,18 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         };
     }
     const answerTaskCount = Math.min(URL_COUNT, urls.length);
+    const answerRoughCosts = [];
     let availableI = answerTaskCount;
-    const answerTasks = [...Array(answerTaskCount).keys()].map((i) => (async () => {
+    const rawAnswerTasks = [...Array(answerTaskCount).keys()].map((i) => (async () => {
         let currI = i;
-        let answer = {answer: null};
+        let answer = '';
+        let data = null;
         for (let j = 0; j <= RETRY_NEW_URL_COUNT; j++) {
-            answer = await getAnswer(correlationId, docId, query, recursedNote, recursedQuery, urls[currI]);
-            if (answer.answer || availableI >= urls.length || j === RETRY_NEW_URL_COUNT) {
+            const o = await getAnswer(
+                correlationId, docId, query, recursedNote, recursedQuery, urls[currI]);
+            answer = o.answer;
+            data = o.data;
+            if (answer || availableI >= urls.length || j === RETRY_NEW_URL_COUNT) {
                 break;
             }
             log.log('research: no answer; retry new url', {correlationId, docId, oldUrl: urls[currI]});
@@ -69,29 +74,46 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             availableI++;
         }
         return {
+            answer,
+            data,
             url: urls[currI],
-            ...answer,
         };
     })());
-    answerTasks.forEach((task) => task.then(async (res) => {
-        const {answer} = res;
-        if (!answer) {
-            return;
-        }
-        await memory.addAction(correlationId, docId, ACTION_LVL, {
-            [common.KIND_FIELD]: ACTION_KIND_ANSWER,
-            [common.RECURSED_NOTE_FIELD]: recursedNote || '',
-            [common.RECURSED_QUERY_FIELD]: recursedQuery,
-            [common.REPLY_FIELD]: answer,
-        }, {correlationId}).catch((e) =>
-            log.log('research: add answer failed; continue since it is not critical', {
-                correlationId, docId, error: e.message || '', stack: e.stack || '',
-            }));
-    }));
-    const answers = (await Promise.all(answerTasks))
-        .filter(({answer}) => answer);
-    const formattedAnswers = answers.map(({answer}) => answer);
-    if (!answers.length) {
+    const answers = await Promise.all(rawAnswerTasks.map((task) => task.then(async (res) => {
+            const {answer, data, url} = res;
+            if (!answer) {
+                return {
+                    answer,
+                    url,
+                };
+            }
+            const actiobDbExtra = {
+                correlationId,
+                data,
+                url,
+            };
+            const {index, timestamp} = await memory.addAction(correlationId, docId, ACTION_LVL, {
+                [common.KIND_FIELD]: ACTION_KIND_ANSWER,
+                [common.RECURSED_NOTE_FIELD]: recursedNote || '',
+                [common.RECURSED_QUERY_FIELD]: recursedQuery,
+                [common.REPLY_FIELD]: answer,
+            }, actiobDbExtra).catch((e) => {
+                log.log('research: add answer failed; continue to not block',
+                    {correlationId, docId, error: e.message || '', stack: e.stack || ''});
+                return {index: null, timestamp: null};
+            });
+            answerRoughCosts.push(data?.roughCost || null);
+            return {
+                answer,
+                url,
+                index,
+                timestamp,
+            };
+        })
+    ));
+    const answersForPrompt = answers.filter(({answer}) => answer)
+        .map(({answer}) => answer);
+    if (!answersForPrompt.length) {
         return {
             state: 'no-answers',
             elapsed: time.elapsedSecs(start),
@@ -100,9 +122,9 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     }
     const answersShortCircuitHook = common.shortCircuitAutocompleteContentHook(
         correlationId, SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS);
-    await Promise.all(formattedAnswers.map(
+    await Promise.all(answersForPrompt.map(
         (answer) => answersShortCircuitHook.add(answer)));
-    const conclusionPrompt = MODEL_CONCLUSION_PROMPT(formattedAnswers, query, recursedNote, recursedQuery);
+    const conclusionPrompt = MODEL_CONCLUSION_PROMPT(answersForPrompt, query, recursedNote, recursedQuery);
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
     const {content: conclusion} = await common.chatWithRetry(
         correlationId, null, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, answersShortCircuitHook, null);
@@ -120,7 +142,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             conclusion: conclusionTokenCount,
         },
         roughCost: common.CHAT_COST.sum([
-            ...answers.map((e) => e.roughCost),
+            ...answerRoughCosts,
             common.CHAT_COST(conclusionPromptTokenCount, conclusionTokenCount)]),
     };
 });
@@ -177,13 +199,15 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
     }
     return {
         answer,
-        input,
-        tokenCounts: {
-            input: inputTokenCount,
-            answerPrompt: answerPromptTokenCount,
-            answer: answerTokenCount,
+        data: {
+            input,
+            tokenCounts: {
+                input: inputTokenCount,
+                answerPrompt: answerPromptTokenCount,
+                answer: answerTokenCount,
+            },
+            roughCost: common.CHAT_COST(answerPromptTokenCount, answerTokenCount),
         },
-        roughCost: common.CHAT_COST(answerPromptTokenCount, answerTokenCount),
     };
 };
 

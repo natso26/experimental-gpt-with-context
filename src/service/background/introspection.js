@@ -54,7 +54,6 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
     const {embedding: introspectionEmbedding} = await common.embedWithRetry(correlationId, introspection);
     const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
     const introspectionTokenCount = await tokenizer.countTokens(correlationId, introspection);
-    const elapsed = time.elapsedSecs(start);
     const extra = {
         correlationId,
         inputIndex: index,
@@ -65,7 +64,7 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
             introspection: introspectionTokenCount,
         },
         timeStats: {
-            elapsed,
+            elapsed: time.elapsedSecs(start),
             elapsedChat,
         },
     };

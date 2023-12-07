@@ -65,7 +65,6 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
         const {embedding: imaginationEmbedding} = await common.embedWithRetry(correlationId, imagination);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
         const imaginationTokenCount = await tokenizer.countTokens(correlationId, imagination);
-        const elapsed = time.elapsedSecs(start);
         const extra = {
             correlationId,
             context,
@@ -75,7 +74,7 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
                 imagination: imaginationTokenCount,
             },
             timeStats: {
-                elapsed,
+                elapsed: time.elapsedSecs(start),
                 elapsedChat,
             },
         };
