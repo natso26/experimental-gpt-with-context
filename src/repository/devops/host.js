@@ -7,7 +7,6 @@ const CLOUD_RUN_SERVICES_CLIENT_CALL_OPTIONS = {
     maxRetries: strictParse.int(process.env.CLOUD_RUN_SERVICES_CLIENT_RETRY_COUNT),
 };
 const ENV_INFO = (() => {
-    console.log(process.env);
     const {ENV, GCP_PROJECT, GCP_REGION, K_SERVICE, K_REVISION, BASE_URL, NIGHTLY_BASE_URL} = process.env;
     switch (ENV) {
         case 'local':
