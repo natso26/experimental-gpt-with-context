@@ -14,7 +14,16 @@ const float = (s) => {
     return v;
 };
 
+const json = (s) => {
+    try {
+        return JSON.parse(s);
+    } catch (e) {
+        throw new Error(`invalid json: ${s}`);
+    }
+};
+
 export default {
     int,
     float,
+    json,
 };
