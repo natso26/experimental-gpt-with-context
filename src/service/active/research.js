@@ -78,6 +78,9 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             currI = availableI;
             availableI++;
         }
+        if (data?.warnings) {
+            warnings.merge(data?.warnings);
+        }
         return {
             answer,
             data,
@@ -142,7 +145,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
     const conclusionTimer = time.timer();
     const {content: conclusion} = await common.chatWithRetry(
-        correlationId, null, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, answersShortCircuitHook, null);
+        correlationId, null, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, answersShortCircuitHook, null, warnings);
     const elapsedConclusion = conclusionTimer.elapsed();
     const conclusionPromptTokenCount = await tokenizer.countTokens(correlationId, conclusionPrompt);
     const conclusionTokenCount = await tokenizer.countTokens(correlationId, conclusion);
@@ -185,6 +188,7 @@ const getTokenCounts = async (correlationId, docId, recursedNote, recursedQuery)
 
 const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuery, url) => {
     log.log('research: get answer: parameters', {correlationId, docId, query, recursedNote, recursedQuery, url});
+    const warnings = common.warnings();
     let input = '';
     let answer = '';
     let inputTokenCount = 0;
@@ -205,14 +209,14 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
                 const answerPrompt = MODEL_ANSWER_PROMPT(input, query, recursedNote, recursedQuery);
                 log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
                 const {content: answer_} = await common.chatWithRetry(
-                    correlationId, null, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null, null);
+                    correlationId, null, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null, null, warnings);
                 answer = answer_;
                 answerPromptTokenCount = await tokenizer.countTokens(correlationId, answerPrompt);
                 answerTokenCount = await tokenizer.countTokens(correlationId, answer);
             }
         }
     } catch (e) {
-        log.log('research: get answer: failed', {
+        warnings('research: get answer: failed', {
             correlationId, docId, query, recursedNote, recursedQuery, url,
             error: e.message || '', stack: e.stack || '',
         });
@@ -227,6 +231,7 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
                 answer: answerTokenCount,
             },
             roughCost: common.CHAT_COST(answerPromptTokenCount, answerTokenCount),
+            warnings: warnings.get(),
         },
     };
 };

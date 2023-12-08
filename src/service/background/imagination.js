@@ -21,6 +21,7 @@ const TOKEN_COUNT_LIMIT = strictParse.int(process.env.IMAGINATION_TOKEN_COUNT_LI
 
 const imagine = wrapper.logCorrelationId('service.background.imagination.imagine', async (correlationId) => {
     log.log('imagine: parameters', {correlationId});
+    const warnings = common.warnings();
     const imagineRes = await memory.imagine(correlationId, new Date(), async (docId) => {
         log.log(`imagine: imagine for doc ID ${docId}`, {correlationId, docId});
         const timer = time.timer();
@@ -60,7 +61,7 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
         const prompt = MODEL_PROMPT(context);
         log.log('imagine: prompt', {correlationId, docId, prompt});
         const chatTimer = time.timer();
-        const {content: imagination} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null);
+        const {content: imagination} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
         const elapsedChat = chatTimer.elapsed();
         const {embedding: imaginationEmbedding} = await common.embedWithRetry(correlationId, imagination);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
@@ -81,6 +82,7 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
         const dbExtra = {
             ...extra,
             prompt,
+            warnings: warnings.get(),
         };
         const {index, timestamp} = await memory.addImagination(correlationId, docId, {
             [common.IMAGINATION_FIELD]: imagination,
@@ -95,6 +97,7 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
     });
     return {
         imagineRes,
+        warnings: warnings.get(),
     };
 });
 
