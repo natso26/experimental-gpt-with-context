@@ -48,17 +48,19 @@ const MODEL_FUNCTION_KIND_RESEARCH = 'research';
 const MODEL_FUNCTION_KIND_REPLY = 'reply'; // NB: way out to not launch subtask
 const MODEL_FUNCTION_KINDS = [MODEL_FUNCTION_KIND_THINK, MODEL_FUNCTION_KIND_RESEARCH, MODEL_FUNCTION_KIND_REPLY];
 const MODEL_FUNCTION = {
-    name: MODEL_FUNCTION_NAME,
-    description: '',
-    parameters: {
-        type: 'object',
-        properties: {
-            [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {type: 'string', description: 'thoughts'},
-            [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: {type: 'string', description: 'search query'},
-            [MODEL_FUNCTION_KIND_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_KINDS},
+    VAL: {
+        name: MODEL_FUNCTION_NAME,
+        description: '',
+        parameters: {
+            type: 'object',
+            properties: {
+                [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {type: 'string', description: 'thoughts'},
+                [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: {type: 'string', description: 'search query'},
+                [MODEL_FUNCTION_KIND_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_KINDS},
+            },
+            required: [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME, MODEL_FUNCTION_KIND_ARG_NAME],
         },
-        required: [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME, MODEL_FUNCTION_KIND_ARG_NAME],
-    },
+    }, TOKEN_COUNT: 55,
 };
 const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_QUERY_TOKEN_COUNT_LIMIT);
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
@@ -155,10 +157,10 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         !onPartial ? null : ({content}) => onPartial({event: 'reply', content});
     const actions = [];
     const actionsForPrompt = [];
-    const actionRoughCosts = [];
+    const actionCosts = [];
     const prompts = [];
     const elapsedChats = [];
-    const promptTokenCounts = [];
+    const usages = [];
     const elapsedFunctionCalls = [];
     const functionCalls = [];
     const cleanedFunctionCalls = [];
@@ -174,11 +176,10 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         prompts.push(localPrompt)
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
         const localChatTimer = time.timer();
-        const {content: localReply, functionCalls: localFunctionCalls} = await common.chatWithRetry(
+        const {content: localReply, functionCalls: localFunctionCalls, usage: localUsage} = await common.chatWithRetry(
             correlationId, onPartialChat, localPrompt, REPLY_TOKEN_COUNT_LIMIT, actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null, warnings);
         elapsedChats.push(localChatTimer.elapsed());
-        const localPromptTokenCount = await tokenizer.countTokens(correlationId, localPrompt);
-        promptTokenCounts.push(localPromptTokenCount);
+        usages.push(localUsage);
         if (!localFunctionCalls.length) {
             reply = localReply;
             break;
@@ -280,7 +281,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                     {correlationId, docId, i, actionLvl, error: e.message || '', stack: e.stack || ''});
                 return {index: null, timestamp: null};
             });
-            actionRoughCosts.push(data?.roughCost || null);
+            actionCosts.push(data?.cost || null);
             return {
                 reply,
                 kind,
@@ -314,7 +315,6 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         }
         i++;
     }
-    const replyTokenCount = await tokenizer.countTokens(correlationId, reply);
     const extra = {
         correlationId,
         info,
@@ -330,12 +330,9 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             recursedQuery: recursedQueryTokenCount,
             info: infoTokenCount,
             search: searchTokenCount,
-            prompts: promptTokenCounts,
-            reply: replyTokenCount,
         },
-        roughCost: common.CHAT_COST.sum([
-            ...actionRoughCosts,
-            common.CHAT_COST(number.sum(promptTokenCounts), replyTokenCount)]),
+        usages,
+        cost: common.CHAT_COST.sum([...actionCosts, ...usages.map(common.CHAT_COST)]),
         timeStats: {
             elapsed: timer.elapsed(),
             elapsedChats,

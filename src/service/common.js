@@ -38,7 +38,7 @@ const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPH
 const SERP_SEARCH_RETRY_COUNT = strictParse.int(process.env.SERP_SEARCH_REPOSITORY_RETRY_COUNT);
 const SCRAPER_EXTRACT_RETRY_COUNT = strictParse.int(process.env.SCRAPER_EXTRACT_REPOSITORY_RETRY_COUNT);
 const CHAT_COST = (() => {
-    const f = (inTokens, outTokens) => number.round(inTokens * 1e-5 + outTokens * 3e-5, 5);
+    const f = ({inTokens, outTokens}) => number.round(inTokens * 1e-5 + outTokens * 3e-5, 5);
     f.sum = (arr) => number.round(number.sum(arr), 5);
     return f;
 })();

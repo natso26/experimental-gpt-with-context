@@ -1,4 +1,5 @@
 import tokenizer from '../../repository/llm/tokenizer.js';
+import chat from '../../repository/llm/chat.js';
 import serp from '../../repository/web/serp.js';
 import memory from '../../repository/db/memory.js';
 import common from '../common.js';
@@ -59,7 +60,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         };
     }
     const answerTaskCount = Math.min(URL_COUNT, urls.length);
-    const answerRoughCosts = [];
+    const answerCosts = [];
     let availableI = answerTaskCount;
     const rawAnswerTasks = [...Array(answerTaskCount).keys()].map((i) => (async () => {
         const answerTimer = time.timer();
@@ -115,7 +116,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
                     {correlationId, docId, error: e.message || '', stack: e.stack || ''});
                 return {index: null, timestamp: null};
             });
-            answerRoughCosts.push(data?.roughCost || null);
+            answerCosts.push(data?.cost || null);
             return {
                 answer,
                 url,
@@ -144,11 +145,9 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const conclusionPrompt = MODEL_CONCLUSION_PROMPT(answersForPrompt, query, recursedNote, recursedQuery);
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
     const conclusionTimer = time.timer();
-    const {content: conclusion} = await common.chatWithRetry(
+    const {content: conclusion, usage} = await common.chatWithRetry(
         correlationId, null, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, answersShortCircuitHook, null, warnings);
     const elapsedConclusion = conclusionTimer.elapsed();
-    const conclusionPromptTokenCount = await tokenizer.countTokens(correlationId, conclusionPrompt);
-    const conclusionTokenCount = await tokenizer.countTokens(correlationId, conclusion);
     return {
         state: 'success',
         reply: conclusion,
@@ -156,12 +155,9 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         tokenCounts: {
             recursedNote: recursedNoteTokenCount,
             recursedQuery: recursedQueryTokenCount,
-            conclusionPrompt: conclusionPromptTokenCount,
-            conclusion: conclusionTokenCount,
         },
-        roughCost: common.CHAT_COST.sum([
-            ...answerRoughCosts,
-            common.CHAT_COST(conclusionPromptTokenCount, conclusionTokenCount)]),
+        usage,
+        cost: common.CHAT_COST.sum([...answerCosts, common.CHAT_COST(usage)]),
         timeStats: {
             elapsed: timer.elapsed(),
             elapsedConclusion,
@@ -192,8 +188,7 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
     let input = '';
     let answer = '';
     let inputTokenCount = 0;
-    let answerPromptTokenCount = 0;
-    let answerTokenCount = 0;
+    let usage = chat.EMPTY_USAGE();
     try {
         const {textData: rawInput} = await common.scraperExtractWithRetry(correlationId, url);
         if (rawInput) {
@@ -208,11 +203,10 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
             } else {
                 const answerPrompt = MODEL_ANSWER_PROMPT(input, query, recursedNote, recursedQuery);
                 log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
-                const {content: answer_} = await common.chatWithRetry(
+                const {content: answer_, usage: usage_} = await common.chatWithRetry(
                     correlationId, null, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null, null, warnings);
                 answer = answer_;
-                answerPromptTokenCount = await tokenizer.countTokens(correlationId, answerPrompt);
-                answerTokenCount = await tokenizer.countTokens(correlationId, answer);
+                usage = usage_;
             }
         }
     } catch (e) {
@@ -227,10 +221,9 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
             input,
             tokenCounts: {
                 input: inputTokenCount,
-                answerPrompt: answerPromptTokenCount,
-                answer: answerTokenCount,
             },
-            roughCost: common.CHAT_COST(answerPromptTokenCount, answerTokenCount),
+            usage,
+            cost: common.CHAT_COST(usage),
             warnings: warnings.get(),
         },
     };
