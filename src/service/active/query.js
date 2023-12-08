@@ -517,9 +517,9 @@ const cleanFunctionCall = (correlationId, docId, i, call) => {
     }
     let {
         [MODEL_FUNCTION_KIND_ARG_NAME]: kind,
-        [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: rawRecursedNextNote,
+        [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: recursedNextNote,
         [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery,
-    } = args;
+    } = args || {};
     if (kind === undefined && MODEL_FUNCTION_KINDS.includes(name)) {
         kind = name;
         log.log('query: clean function call: use fallback kind',
@@ -535,11 +535,10 @@ const cleanFunctionCall = (correlationId, docId, i, call) => {
             }
         }
     }
-    const recursedNextNote = rawRecursedNextNote || null;
     const cleanedArgs = {
-        [MODEL_FUNCTION_KIND_ARG_NAME]: kind,
-        [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: recursedNextNote,
-        [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery,
+        [MODEL_FUNCTION_KIND_ARG_NAME]: kind || '',
+        [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: recursedNextNote || null,
+        [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery || '',
     };
     return {name: MODEL_FUNCTION_NAME, args: cleanedArgs};
 };

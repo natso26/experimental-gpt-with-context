@@ -142,6 +142,7 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
         return false;
     };
     let currChunk = '';
+    let tempPrefix = '';
     for await (const b of resp.body) {
         const lines = b.toString().split('\n');
         for (const line of lines) {
@@ -161,11 +162,18 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
                     currChunk = '';
                 }
             } else if (!currChunk) {
-                if (!line.startsWith('data: ')) {
-                    log.log(`chat completions api: invalid line: ${line}`,
-                        {correlationId, line});
+                // length of 'data: ' is 6
+                const line_ = tempPrefix + line;
+                if (line_.length < 6) {
+                    tempPrefix = line_;
                 } else {
-                    currChunk = line.slice(6); // length of 'data: '
+                    tempPrefix = '';
+                    if (!line_.startsWith('data: ')) {
+                        log.log(`chat completions api: invalid line: ${line_}`,
+                            {correlationId, line: line_});
+                    } else {
+                        currChunk = line_.slice(6);
+                    }
                 }
             } else {
                 currChunk += line;

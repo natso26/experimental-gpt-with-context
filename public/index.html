@@ -197,6 +197,7 @@
                     }
                 }
                 let currChunk = '';
+                let tempPrefix = '';
                 readLoop: while (true) {
                     const {done, value} = await reader.read();
                     if (done) break;
@@ -208,8 +209,13 @@
                                 currChunk = '';
                             }
                         } else if (!currChunk) {
-                            if (!line.startsWith('data: ')) console.log('invalid line', line);
-                            else currChunk = line.slice(6);
+                            const line_ = tempPrefix + line;
+                            if (line_.length < 6) tempPrefix = line_;
+                            else {
+                                tempPrefix = '';
+                                if (!line_.startsWith('data: ')) console.log('invalid line', line);
+                                else currChunk = line_.slice(6);
+                            }
                         } else currChunk += line;
                     }
                 }
