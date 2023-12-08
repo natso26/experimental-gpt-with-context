@@ -23,7 +23,7 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
     log.log('imagine: parameters', {correlationId});
     const imagineRes = await memory.imagine(correlationId, new Date(), async (docId) => {
         log.log(`imagine: imagine for doc ID ${docId}`, {correlationId, docId});
-        const start = new Date();
+        const timer = time.timer();
         let selectedEmbedding;
         const rawContext = await memory.longTermSearch(correlationId, docId, (getConsolidations, consolidation) => {
             if (!selectedEmbedding) {
@@ -59,9 +59,9 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
         log.log(`imagine: context for doc ID ${docId}`, {correlationId, docId, context});
         const prompt = MODEL_PROMPT(context);
         log.log('imagine: prompt', {correlationId, docId, prompt});
-        const startChat = new Date();
+        const chatTimer = time.timer();
         const {content: imagination} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null);
-        const elapsedChat = time.elapsedSecs(startChat);
+        const elapsedChat = chatTimer.elapsed();
         const {embedding: imaginationEmbedding} = await common.embedWithRetry(correlationId, imagination);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
         const imaginationTokenCount = await tokenizer.countTokens(correlationId, imagination);
@@ -74,7 +74,7 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
                 imagination: imaginationTokenCount,
             },
             timeStats: {
-                elapsed: time.elapsedSecs(start),
+                elapsed: timer.elapsed(),
                 elapsedChat,
             },
         };

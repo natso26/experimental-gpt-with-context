@@ -103,7 +103,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     }).catch((_) => '');
     const docId = common.DOC_ID.from(userId, sessionId);
     const actionLvl = !recursedQuery ? 0 : 1;
-    const start = new Date();
+    const timer = time.timer();
     const {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, query, recursedNote, recursedQuery);
     const [
@@ -145,7 +145,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 {shortTermContext},
                 {longTermContext},
             ] = await Promise.all([
-                getShortTermContext(correlationId, docId, start, doSim),
+                getShortTermContext(correlationId, docId, timer, doSim),
                 getLongTermContext(correlationId, docId, doSim),
             ]);
             return {queryEmbedding, shortTermContext, longTermContext};
@@ -173,10 +173,10 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             info, search, actionHistory, [...actionsForPrompt].reverse(), longTermContext, shortTermContext, query, recursedNote, recursedQuery);
         prompts.push(localPrompt)
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
-        const startLocalChat = new Date();
+        const localChatTimer = time.timer();
         const {content: localReply, functionCalls: localFunctionCalls} = await common.chatWithRetry(
             correlationId, onPartialChat, localPrompt, REPLY_TOKEN_COUNT_LIMIT, actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null);
-        elapsedChats.push(time.elapsedSecs(startLocalChat));
+        elapsedChats.push(localChatTimer.elapsed());
         const localPromptTokenCount = await tokenizer.countTokens(correlationId, localPrompt);
         promptTokenCounts.push(localPromptTokenCount);
         if (!localFunctionCalls.length) {
@@ -190,7 +190,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         }
         const cleanedLocalFunctionCalls = localFunctionCalls.map((call) =>
             cleanFunctionCall(correlationId, docId, i, call));
-        const startLocalFunctionCalls = new Date();
+        const localFunctionCallsTimer = time.timer();
         const rawLocalActionTasks = [];
         for (const {args} of cleanedLocalFunctionCalls) {
             const {
@@ -295,7 +295,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             .map(({reply}) => ({[MODEL_PROMPT_REPLY_FIELD]: reply}));
         actions.push({v: localActions});
         actionsForPrompt.push(...localActionsForPrompt);
-        elapsedFunctionCalls.push(time.elapsedSecs(startLocalFunctionCalls));
+        elapsedFunctionCalls.push(localFunctionCallsTimer.elapsed());
         functionCalls.push({v: localFunctionCalls});
         cleanedFunctionCalls.push({v: cleanedLocalFunctionCalls});
         await Promise.all(localActionsForPrompt.map(
@@ -337,7 +337,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             ...actionRoughCosts,
             common.CHAT_COST(number.sum(promptTokenCounts), replyTokenCount)]),
         timeStats: {
-            elapsed: time.elapsedSecs(start),
+            elapsed: timer.elapsed(),
             elapsedChats,
             elapsedFunctionCalls,
         },
@@ -468,9 +468,9 @@ const getActionHistory = async (correlationId, docId, actionLvl) => {
     return {actionHistory};
 };
 
-const getShortTermContext = async (correlationId, docId, start, doSim) => {
+const getShortTermContext = async (correlationId, docId, timer, doSim) => {
     const rawShortTermContext = await memory.shortTermSearch(correlationId, docId, (elt, i, timestamp) => {
-        const ms = start - timestamp;
+        const ms = timer.getStart() - timestamp;
         // NB: geometric mean
         const getSim = () => {
             const {
