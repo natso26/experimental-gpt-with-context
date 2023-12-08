@@ -1,4 +1,3 @@
-import tokenizer from '../../repository/llm/tokenizer.js';
 import memory from '../../repository/db/memory.js';
 import common from '../common.js';
 import strictParse from '../../util/strictParse.js';
@@ -45,18 +44,15 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
         const prompt = MODEL_PROMPT(context);
         log.log('consolidate: prompt', {correlationId, docId, lvl, prompt});
         const chatTimer = time.timer();
-        const {content: summary} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
+        const {content: summary, usage} = await common.chatWithRetry(
+            correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
         const elapsedChat = chatTimer.elapsed();
         const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
-        const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
-        const summaryTokenCount = await tokenizer.countTokens(correlationId, summary);
         const extra = {
             correlationId,
             context,
-            tokenCounts: {
-                prompt: promptTokenCount,
-                summary: summaryTokenCount,
-            },
+            usage,
+            cost: common.CHAT_COST(usage),
             timeStats: {
                 elapsed: timer.elapsed(),
                 elapsedChat,

@@ -1,4 +1,3 @@
-import tokenizer from '../../repository/llm/tokenizer.js';
 import memory from '../../repository/db/memory.js';
 import common from '../common.js';
 import strictParse from '../../util/strictParse.js';
@@ -61,19 +60,16 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
         const prompt = MODEL_PROMPT(context);
         log.log('imagine: prompt', {correlationId, docId, prompt});
         const chatTimer = time.timer();
-        const {content: imagination} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
+        const {content: imagination, usage} = await common.chatWithRetry(
+            correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
         const elapsedChat = chatTimer.elapsed();
         const {embedding: imaginationEmbedding} = await common.embedWithRetry(correlationId, imagination);
-        const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
-        const imaginationTokenCount = await tokenizer.countTokens(correlationId, imagination);
         const extra = {
             correlationId,
             context,
             prompt,
-            tokenCounts: {
-                prompt: promptTokenCount,
-                imagination: imaginationTokenCount,
-            },
+            usage,
+            cost: common.CHAT_COST(usage),
             timeStats: {
                 elapsed: timer.elapsed(),
                 elapsedChat,

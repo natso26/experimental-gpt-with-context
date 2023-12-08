@@ -1,5 +1,7 @@
+import tokenizer from './tokenizer.js';
 import common_ from '../../common.js';
 import fetch_ from '../../util/fetch.js';
+import number from '../../util/number.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
@@ -9,12 +11,13 @@ const URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4-1106-preview';
 const TOP_P = strictParse.float(process.env.CHAT_COMPLETIONS_API_TOP_P);
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
+const EMPTY_USAGE = () => ({inTokens: 0, outTokens: 0});
 const _DEV_FLAG_NOT_STREAM = false;
 (process.env.ENV === 'local' || !_DEV_FLAG_NOT_STREAM) || (() => {
     throw new Error('_DEV_FLAG_NOT_STREAM not correctly set');
 })();
 
-const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, content, maxTokens, shortCircuitHook, fn, warnings) => {
+const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, input, maxTokens, shortCircuitHook, fn, warnings) => {
     const timer = time.timer();
     const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
@@ -29,7 +32,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             messages: [
                 {
                     role: 'system',
-                    content,
+                    content: input,
                 },
             ],
             // NB: forego multiple functions
@@ -37,7 +40,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
                 tools: [
                     {
                         type: 'function',
-                        function: fn,
+                        function: fn.VAL,
                     },
                 ],
             }),
@@ -61,7 +64,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         log.log('chat completions api: problem destroying response body',
             {correlationId, error: e.message || '', stack: e.stack || ''});
     }
-    const {content: content_, toolCalls} = data;
+    const {content, toolCalls} = data;
     const functionCalls = toolCalls.map((call) => {
         const {name, args: rawArgs} = call;
         try {
@@ -78,9 +81,11 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             };
         }
     });
+    const usage = await tokenUsage(correlationId, input, fn, content, toolCalls, warnings);
     const out = {
-        content: content_,
+        content,
         functionCalls,
+        usage,
     };
     log.log('chat completions api: out', {correlationId, out});
     return out;
@@ -164,6 +169,35 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
     return {content, toolCalls};
 };
 
+const tokenUsage = async (correlationId, input, fn, content, toolCalls, warnings) => {
+    try {
+        const doCount = (s) => tokenizer.countTokens(correlationId, s);
+        const countToolCall = async ({name, args}) => await doCount(name) + await doCount(args);
+        const inputPad = 7;
+        // NB: sometimes off by a few tokens
+        const toolCallsPad = (toolCalls) => {
+            const l = toolCalls.length;
+            return !l ? 0 : l === 1 ? 7 : 21 * (l + 1);
+        };
+        const inputTokens = await doCount(input) + inputPad;
+        const fnTokens = fn?.TOKEN_COUNT || 0;
+        const contentTokens = !content ? 0 : await doCount(content);
+        const toolCallsTokens = number.sum(await Promise.all(toolCalls.map(countToolCall))) + toolCallsPad(toolCalls);
+        const inTokens = inputTokens + fnTokens;
+        const outTokens = contentTokens + toolCallsTokens; // NB: only tested with exactly one present
+        const usage = {
+            inTokens,
+            outTokens,
+        };
+        log.log('chat completions api: token usage', {correlationId, usage});
+        return usage;
+    } catch (e) {
+        warnings('chat completions api: failed to determine token usage',
+            {correlationId, error: e.message || '', stack: e.stack || ''});
+        return EMPTY_USAGE();
+    }
+};
+
 const _notStreamReadBody = async (correlationId, resp) => {
     const data = await resp.json();
     log.log('chat completions api: data', {correlationId, data});
@@ -174,5 +208,6 @@ const _notStreamReadBody = async (correlationId, resp) => {
 };
 
 export default {
+    EMPTY_USAGE,
     chat,
 };

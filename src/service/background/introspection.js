@@ -1,4 +1,3 @@
-import tokenizer from '../../repository/llm/tokenizer.js';
 import memory from '../../repository/db/memory.js';
 import common from '../common.js';
 import strictParse from '../../util/strictParse.js';
@@ -51,20 +50,17 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
     const prompt = MODEL_PROMPT(context);
     log.log('introspect: prompt', {correlationId, docId, prompt});
     const chatTimer = time.timer();
-    const {content: introspection} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
+    const {content: introspection, usage} = await common.chatWithRetry(
+        correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
     const elapsedChat = chatTimer.elapsed();
     const {embedding: introspectionEmbedding} = await common.embedWithRetry(correlationId, introspection);
-    const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
-    const introspectionTokenCount = await tokenizer.countTokens(correlationId, introspection);
     const extra = {
         correlationId,
         inputIndex: index,
-        waitTime,
+        waitTime: waitTime / 1000,
         context,
-        tokenCounts: {
-            prompt: promptTokenCount,
-            introspection: introspectionTokenCount,
-        },
+        usage,
+        cost: common.CHAT_COST(usage),
         timeStats: {
             elapsed: timer.elapsed(),
             elapsedChat,
