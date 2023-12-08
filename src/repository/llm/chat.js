@@ -3,6 +3,7 @@ import fetch_ from '../../util/fetch.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
+import time from '../../util/time.js';
 
 const URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4-1106-preview';
@@ -10,7 +11,7 @@ const TOP_P = strictParse.float(process.env.CHAT_COMPLETIONS_API_TOP_P);
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
 
 const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, content, maxTokens, shortCircuitHook, fn) => {
-    const start = Date.now();
+    const timer = time.timer();
     const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -49,7 +50,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         log.log(msg, {correlationId, body});
         throw new Error(msg);
     }
-    const data = await streamReadBody(correlationId, onPartial, resp, start, shortCircuitHook);
+    const data = await streamReadBody(correlationId, onPartial, resp, timer, shortCircuitHook);
     try {
         resp.body.destroy(); // early return
     } catch (e) {
@@ -81,7 +82,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     return out;
 });
 
-const streamReadBody = async (correlationId, onPartial, resp, start, shortCircuitHook) => {
+const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircuitHook) => {
     let content = '';
     let toolCalls = [];
     const processChunk = (chunk) => {
@@ -148,7 +149,7 @@ const streamReadBody = async (correlationId, onPartial, resp, start, shortCircui
                 currChunk += line;
             }
         }
-        if (Date.now() - start > TIMEOUT) { // separate from req timeout
+        if (1000 * timer.elapsed() > TIMEOUT) { // separate from req timeout
             log.log('chat completions api: timeout', {correlationId});
             break;
         }
