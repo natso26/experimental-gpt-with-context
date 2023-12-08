@@ -7,6 +7,7 @@ import scraper from '../repository/web/scraper.js';
 import number from '../util/number.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
+import error from '../util/error.js';
 
 const DOC_ID = {
     from: (userId, sessionId) => `${userId}_${sessionId}`,
@@ -68,32 +69,27 @@ const retry = (fn, onError) => async (...args) => {
 };
 
 const embedWithRetry = retry(embedding.embed, (e, cnt) => {
-    log.log(`embed repository failed, retry count: ${cnt}`,
-        {cnt, error: e.message || '', stack: e.stack || ''});
+    log.log(`embed repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
     return cnt < EMBED_RETRY_COUNT;
 });
 
 const chatWithRetry = retry(chat.chat, (e, cnt) => {
-    log.log(`chat repository failed, retry count: ${cnt}`,
-        {cnt, error: e.message || '', stack: e.stack || ''});
+    log.log(`chat repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
     return cnt < CHAT_RETRY_COUNT;
 });
 
 const wolframAlphaQueryWithRetry = retry(wolframAlpha.query, (e, cnt) => {
-    log.log(`wolfram alpha query repository failed, retry count: ${cnt}`,
-        {cnt, error: e.message || '', stack: e.stack || ''});
+    log.log(`wolfram alpha query repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
     return cnt < WOLFRAM_ALPHA_QUERY_RETRY_COUNT;
 });
 
 const serpSearchWithRetry = retry(serp.search, (e, cnt) => {
-    log.log(`serp search repository failed, retry count: ${cnt}`,
-        {cnt, error: e.message || '', stack: e.stack || ''});
+    log.log(`serp search repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
     return cnt < SERP_SEARCH_RETRY_COUNT;
 });
 
 const scraperExtractWithRetry = retry(scraper.extract, (e, cnt) => {
-    log.log(`scraper extract repository failed, retry count: ${cnt}`,
-        {cnt, error: e.message || '', stack: e.stack || ''});
+    log.log(`scraper extract repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
     return cnt < SCRAPER_EXTRACT_RETRY_COUNT;
 });
 
@@ -148,14 +144,15 @@ const mapDropConflict = () => {
 
 const warnings = () => {
     const warnings = {normal: [], strong: []};
-    const f = (message, extra = {}) => {
-        log.log(message, extra);
-        warnings.normal.push(message);
+    const add = (arr, message, extra, e) => {
+        const ex = !e ? null : error.explain(e);
+        const realMessage = !ex ? message : `${message}: ${ex.error}`;
+        const realExtra = !ex ? extra : {...extra, ...ex};
+        log.log(realMessage, realExtra);
+        arr.push(realMessage);
     };
-    f.strong = (message, extra = {}) => {
-        log.log(message, extra);
-        warnings.strong.push(message);
-    };
+    const f = (message, extra = {}, e = null) => add(warnings.normal, message, extra, e);
+    f.strong = (message, extra = {}, e = null) => add(warnings.strong, message, extra, e);
     f.merge = (other) => {
         warnings.normal.push(...other?.normal || []);
         warnings.strong.push(...other?.strong || []);

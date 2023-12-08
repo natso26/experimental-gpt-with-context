@@ -6,6 +6,7 @@ import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
 import time from '../../util/time.js';
+import error from '../../util/error.js';
 
 const URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4-1106-preview';
@@ -54,15 +55,14 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     if (!resp.ok) {
         const msg = `chat completions api error, status: ${resp.status}`;
         const body = await fetch_.parseRespBody(resp);
-        log.log(msg, {correlationId, body});
+        warnings(msg, {correlationId, body});
         throw new Error(msg);
     }
     const data = await streamReadBody(correlationId, onPartial, resp, timer, shortCircuitHook, warnings);
     try {
         resp.body.destroy(); // early return
     } catch (e) {
-        log.log('chat completions api: problem destroying response body',
-            {correlationId, error: e.message || '', stack: e.stack || ''});
+        log.log('chat completions api: problem destroying response body', {correlationId, ...error.explain(e)});
     }
     const {content, toolCalls} = data;
     const functionCalls = toolCalls.map((call) => {
@@ -75,7 +75,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             };
         } catch (e) {
             log.log(`chat completions api: invalid json for args of function: ${name}`,
-                {correlationId, name, rawArgs, error: e.message || '', stack: e.stack || ''});
+                {correlationId, name, rawArgs, ...error.explain(e)});
             return {
                 name,
             };
@@ -97,9 +97,16 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
     }
     let content = '';
     let toolCalls = [];
+    let wantThrow = false;
     const processChunk = (chunk) => {
         try {
             const chunkData = JSON.parse(chunk);
+            if (chunkData.error) {
+                const msg = 'chat completions api: error while streaming';
+                warnings(msg, {correlationId, chunkData});
+                wantThrow = true;
+                throw new Error(msg);
+            }
             const {delta: {content: chunkContent, tool_calls: chunkToolCalls}, finish_reason: chunkFinishReason}
                 = chunkData.choices[0];
             if (chunkContent) {
@@ -126,8 +133,11 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
                 return true;
             }
         } catch (e) {
+            if (wantThrow) {
+                throw e;
+            }
             log.log(`chat completions api: invalid json for chunk: ${chunk}`,
-                {correlationId, chunk, error: e.message || '', stack: e.stack || ''});
+                {correlationId, chunk, ...error.explain(e)});
         }
         return false;
     };
@@ -192,8 +202,7 @@ const tokenUsage = async (correlationId, input, fn, content, toolCalls, warnings
         log.log('chat completions api: token usage', {correlationId, usage});
         return usage;
     } catch (e) {
-        warnings('chat completions api: failed to determine token usage',
-            {correlationId, error: e.message || '', stack: e.stack || ''});
+        warnings('chat completions api: failed to determine token usage', {correlationId}, e);
         return EMPTY_USAGE();
     }
 };

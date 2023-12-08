@@ -112,8 +112,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
                 [common.RECURSED_QUERY_FIELD]: recursedQuery,
                 [common.REPLY_FIELD]: answer,
             }, actiobDbExtra).catch((e) => {
-                warnings.strong('research: add answer failed; warn',
-                    {correlationId, docId, error: e.message || '', stack: e.stack || ''});
+                warnings.strong('research: add answer failed', {correlationId, docId}, e);
                 return {index: null, timestamp: null};
             });
             answerCosts.push(data?.cost || null);
@@ -210,10 +209,8 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
             }
         }
     } catch (e) {
-        warnings('research: get answer: failed', {
-            correlationId, docId, query, recursedNote, recursedQuery, url,
-            error: e.message || '', stack: e.stack || '',
-        });
+        warnings('research: get answer: failed',
+            {correlationId, docId, query, recursedNote, recursedQuery, url}, e);
     }
     return {
         answer,

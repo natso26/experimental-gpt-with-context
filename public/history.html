@@ -178,14 +178,15 @@
                 onResp({data}, history);
             }
         } catch (e) {
-            onResp({e: {error: e.message || '', stack: e.stack || ''}},
-                e.message || 'There was an error fetching the response.');
+            const ex = explainError(e);
+            onResp({e: ex}, ex.error);
         }
         sessionIdBox.disabled = false;
         offsetInput.disabled = false;
         limitInput.disabled = false;
         submitButton.disabled = false;
     });
+    const explainError = (e) => ({error: `${e.name || ''}: ${e.message || ''}`, stack: e.stack || ''});
 </script>
 </body>
 </html>
