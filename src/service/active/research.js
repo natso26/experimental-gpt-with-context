@@ -42,7 +42,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         {correlationId, userId, sessionId, query, recursedNote, recursedQuery});
     const warnings = common.warnings();
     const docId = common.DOC_ID.from(userId, sessionId);
-    const start = new Date();
+    const timer = time.timer();
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, recursedNote, recursedQuery);
     const {data: search} = await common.serpSearchWithRetry(correlationId, recursedQuery);
@@ -51,8 +51,10 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     if (!urls.length) {
         return {
             state: 'no-urls',
-            elapsed: time.elapsedSecs(start),
             reply: null,
+            timeStats: {
+                elapsed: timer.elapsed(),
+            },
             warnings: warnings.get(),
         };
     }
@@ -60,6 +62,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const answerRoughCosts = [];
     let availableI = answerTaskCount;
     const rawAnswerTasks = [...Array(answerTaskCount).keys()].map((i) => (async () => {
+        const answerTimer = time.timer();
         let currI = i;
         let answer = '';
         let data = null;
@@ -79,20 +82,25 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             answer,
             data,
             url: urls[currI],
+            timeStats: {
+                elapsed: answerTimer.elapsed(),
+            },
         };
     })());
     const answers = await Promise.all(rawAnswerTasks.map((task) => task.then(async (res) => {
-            const {answer, data, url} = res;
+            const {answer, data, url, timeStats} = res;
             if (!answer) {
                 return {
                     answer,
                     url,
+                    timeStats,
                 };
             }
             const actiobDbExtra = {
                 correlationId,
                 data,
                 url,
+                timeStats,
             };
             const {index, timestamp} = await memory.addAction(correlationId, docId, ACTION_LVL, {
                 [common.KIND_FIELD]: ACTION_KIND_ANSWER,
@@ -108,6 +116,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             return {
                 answer,
                 url,
+                timeStats,
                 index,
                 timestamp,
             };
@@ -118,8 +127,10 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     if (!answersForPrompt.length) {
         return {
             state: 'no-answers',
-            elapsed: time.elapsedSecs(start),
             reply: null,
+            timeStats: {
+                elapsed: timer.elapsed(),
+            },
             warnings: warnings.get(),
         };
     }
@@ -129,13 +140,14 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         (answer) => answersShortCircuitHook.add(answer)));
     const conclusionPrompt = MODEL_CONCLUSION_PROMPT(answersForPrompt, query, recursedNote, recursedQuery);
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
+    const conclusionTimer = time.timer();
     const {content: conclusion} = await common.chatWithRetry(
         correlationId, null, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, answersShortCircuitHook, null);
+    const elapsedConclusion = conclusionTimer.elapsed();
     const conclusionPromptTokenCount = await tokenizer.countTokens(correlationId, conclusionPrompt);
     const conclusionTokenCount = await tokenizer.countTokens(correlationId, conclusion);
     return {
         state: 'success',
-        elapsed: time.elapsedSecs(start),
         reply: conclusion,
         answers,
         tokenCounts: {
@@ -147,6 +159,10 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         roughCost: common.CHAT_COST.sum([
             ...answerRoughCosts,
             common.CHAT_COST(conclusionPromptTokenCount, conclusionTokenCount)]),
+        timeStats: {
+            elapsed: timer.elapsed(),
+            elapsedConclusion,
+        },
         warnings: warnings.get(),
     };
 });

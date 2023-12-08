@@ -22,7 +22,7 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
     log.log('consolidate: parameters', {correlationId, userId, sessionId});
     const docId = common.DOC_ID.from(userId, sessionId);
     const rawConsolidationRes = await memory.consolidate(correlationId, docId, async (lvl, raw) => {
-        const start = new Date();
+        const timer = time.timer();
         // NB: {text: summary} > {summary}
         const context = lvl ? raw.map((
             {
@@ -43,9 +43,9 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
         log.log('consolidate: context', {correlationId, docId, lvl, context});
         const prompt = MODEL_PROMPT(context);
         log.log('consolidate: prompt', {correlationId, docId, lvl, prompt});
-        const startChat = new Date();
+        const chatTimer = time.timer();
         const {content: summary} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null);
-        const elapsedChat = time.elapsedSecs(startChat);
+        const elapsedChat = chatTimer.elapsed();
         const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
         const summaryTokenCount = await tokenizer.countTokens(correlationId, summary);
@@ -57,7 +57,7 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
                 summary: summaryTokenCount,
             },
             timeStats: {
-                elapsed: time.elapsedSecs(start),
+                elapsed: timer.elapsed(),
                 elapsedChat,
             },
         };

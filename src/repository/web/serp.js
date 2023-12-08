@@ -41,20 +41,21 @@ const getOrganicLinks = (data) => {
 const pruneResp = (data) => {
     if (Array.isArray(data)) {
         return data.map(pruneResp);
-    } else if (typeof data === 'object') {
+    } else if (data !== null && typeof data === 'object') {
         const ret = {};
-        Object.entries(data).forEach(([k, v]) => {
+        for (const [k, v] of Object.entries(data)) {
             if (k.includes('serpapi') || k === 'next_page_token') {
-                return;
+                continue;
             }
             ret[k] = pruneResp(v);
-        });
+        }
         return ret;
     } else if (typeof data === 'string') {
         if (data.startsWith('https://serpapi.com/') || data.startsWith('https://www.google.com/')) {
             return '';
+        } else {
+            return data;
         }
-        return data;
     } else {
         return data;
     }
