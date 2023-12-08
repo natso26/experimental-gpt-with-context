@@ -370,7 +370,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         }),
         setScheduledImagination(correlationId, docId, warnings),
     ]);
-    if (index) {
+    if (index !== null) {
         await triggerBackgroundTasks(correlationId, docId, index, baseUrlTask, warnings);
     }
     return {
