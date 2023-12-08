@@ -1,9 +1,11 @@
 import tokenizer from './tokenizer.js';
+import common from '../common.js';
 import common_ from '../../common.js';
 import fetch_ from '../../util/fetch.js';
 import number from '../../util/number.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
+import cache from '../../util/cache.js';
 import wrapper from '../../util/wrapper.js';
 import time from '../../util/time.js';
 import error from '../../util/error.js';
@@ -12,6 +14,7 @@ const URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4-1106-preview';
 const TOP_P = strictParse.float(process.env.CHAT_COMPLETIONS_API_TOP_P);
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
+const RETRY_429_BACKOFFS = strictParse.json(process.env.CHAT_COMPLETIONS_API_RETRY_429_BACKOFFS_MS);
 const EMPTY_USAGE = () => ({inTokens: 0, outTokens: 0});
 const _DEV_FLAG_NOT_STREAM = false;
 (process.env.ENV === 'local' || !_DEV_FLAG_NOT_STREAM) || (() => {
@@ -19,8 +22,7 @@ const _DEV_FLAG_NOT_STREAM = false;
 })();
 
 const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, input, maxTokens, shortCircuitHook, fn, warnings) => {
-    const timer = time.timer();
-    const resp = await fetch_.withTimeout(URL, {
+    const resp = await common.retry429(correlationId, () => fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -51,13 +53,15 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             frequency_penalty: 0,
             presence_penalty: 0,
         }),
-    }, TIMEOUT);
+    }, TIMEOUT), RETRY_429_BACKOFFS);
+    log.log('chat completions api: resp headers', {correlationId, headers: Object.fromEntries(resp.headers)});
     if (!resp.ok) {
         const msg = `chat completions api error, status: ${resp.status}`;
         const body = await fetch_.parseRespBody(resp);
         warnings(msg, {correlationId, body});
         throw new Error(msg);
     }
+    const timer = time.timer();
     const data = await streamReadBody(correlationId, onPartial, resp, timer, shortCircuitHook, warnings);
     try {
         resp.body.destroy(); // early return
@@ -74,7 +78,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
                 args,
             };
         } catch (e) {
-            log.log(`chat completions api: invalid json for args of function: ${name}`,
+            warnings(`chat completions api: invalid json for args of function: ${name}`,
                 {correlationId, name, rawArgs, ...error.explain(e)});
             return {
                 name,
@@ -141,13 +145,13 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
         }
         return false;
     };
-    let currChunk = '';
+    let currChunk = null; // empty string ambiguous
     let tempPrefix = '';
     for await (const b of resp.body) {
         const lines = b.toString().split('\n');
         for (const line of lines) {
             if (!line) {
-                if (!currChunk) { // pass
+                if (currChunk === null) { // pass
                 } else {
                     const isDone = processChunk(currChunk);
                     if (isDone) {
@@ -159,9 +163,9 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
                             {correlationId, content, toolCalls});
                         return shortCircuit;
                     }
-                    currChunk = '';
+                    currChunk = null;
                 }
-            } else if (!currChunk) {
+            } else if (currChunk === null) {
                 // length of 'data: ' is 6
                 const line_ = tempPrefix + line;
                 if (line_.length < 6) {
@@ -189,7 +193,8 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
 
 const tokenUsage = async (correlationId, input, fn, content, toolCalls, warnings) => {
     try {
-        const doCount = (s) => tokenizer.countTokens(correlationId, s);
+        const doCount = wrapper.cache(cache.lruTtl(50, 1000), (s) => s,
+            (s) => tokenizer.countTokens(correlationId, s));
         const countToolCall = async ({name, args}) => await doCount(name) + await doCount(args);
         const inputPad = 7;
         // NB: sometimes off by a few tokens

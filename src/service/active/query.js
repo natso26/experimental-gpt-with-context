@@ -186,8 +186,8 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             log.log(`query: iter ${i}: function call: model also replied; discard`,
                 {correlationId, docId, i, localReply});
         }
-        const cleanedLocalFunctionCalls = localFunctionCalls.map((call) =>
-            cleanFunctionCall(correlationId, docId, i, call));
+        const cleanedLocalFunctionCalls = await Promise.all(localFunctionCalls.map((call) =>
+            cleanFunctionCall(correlationId, docId, i, call)));
         const localFunctionCallsTimer = time.timer();
         const rawLocalActionTasks = [];
         for (const {args} of cleanedLocalFunctionCalls) {
@@ -509,8 +509,9 @@ const getLongTermContext = async (correlationId, docId, doSim) => {
     return {longTermContext};
 };
 
-const cleanFunctionCall = (correlationId, docId, i, call) => {
-    const {name, args} = call;
+const cleanFunctionCall = async (correlationId, docId, i, call) => {
+    const {name, args: args_} = call;
+    const args = args_ || {};
     if (name !== MODEL_FUNCTION_NAME) {
         log.log(`query: clean function call: invalid name: ${name}; continue`,
             {correlationId, docId, i, call});
@@ -519,7 +520,7 @@ const cleanFunctionCall = (correlationId, docId, i, call) => {
         [MODEL_FUNCTION_KIND_ARG_NAME]: kind,
         [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: recursedNextNote,
         [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery,
-    } = args || {};
+    } = args;
     if (kind === undefined && MODEL_FUNCTION_KINDS.includes(name)) {
         kind = name;
         log.log('query: clean function call: use fallback kind',
@@ -535,12 +536,23 @@ const cleanFunctionCall = (correlationId, docId, i, call) => {
             }
         }
     }
-    const cleanedArgs = {
-        [MODEL_FUNCTION_KIND_ARG_NAME]: kind || '',
-        [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: recursedNextNote || null,
-        [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: recursedNextQuery || '',
+    const doTruncate = async (s, tokenCount) => {
+        if (s.length <= tokenCount) { // common case
+            return s;
+        }
+        const {truncated, tokenCount: initTokenCount} = await tokenizer.truncate(correlationId, s, tokenCount);
+        log.log('query: clean function call: possibly truncate',
+            {correlationId, docId, i, s, tokenCount, initTokenCount});
+        return truncated;
     };
-    return {name: MODEL_FUNCTION_NAME, args: cleanedArgs};
+    const cleanRecursedNote = !recursedNextNote ? null : await doTruncate(recursedNextNote, RECURSED_NOTE_TOKEN_COUNT_LIMIT);
+    const cleanRecursedQuery = !recursedNextQuery ? '' : await doTruncate(recursedNextQuery, RECURSED_QUERY_TOKEN_COUNT_LIMIT);
+    const cleanArgs = {
+        [MODEL_FUNCTION_KIND_ARG_NAME]: kind || '',
+        [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: cleanRecursedNote,
+        [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: cleanRecursedQuery,
+    };
+    return {name: MODEL_FUNCTION_NAME, args: cleanArgs};
 };
 
 const thinkAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
