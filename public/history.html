@@ -74,9 +74,9 @@
     </style>
 </head>
 <body>
-<label for="session-id">Session ID</label>
+<label for="session-id" id="session-id-label">Session ID</label>
 <div>
-    <textarea class="text-box" id="session-id" rows="1"></textarea>
+    <textarea class="text-box" id="session-id" maxlength="36" rows="1"></textarea>
 </div>
 <div class="buttons-panel">
     <div>
@@ -91,17 +91,19 @@
     </a>
 </div>
 <br><br>
-<label for="history">History</label>
+<label for="history" id="history-label">History</label>
 <div class="div-reheight">
     <textarea class="text-box text-box-reheight" disabled id="history"></textarea>
 </div>
 
 <script>
+    const sessionIdLabel = document.getElementById('session-id-label');
     const sessionIdBox = document.getElementById('session-id');
     const offsetInput = document.getElementById('offset');
     const limitInput = document.getElementById('limit');
     const submitButton = document.getElementById('submit');
     const toQueryLink = document.getElementById('to-query');
+    const historyLabel = document.getElementById('history-label');
     const historyBox = document.getElementById('history');
     const updateUrls = () => {
         const sessionId = sessionIdBox.value.trim();
@@ -113,10 +115,6 @@
         p.set('limit', limitInput.value.trim());
         window.history.pushState({}, '', url);
     };
-    const onResp = (debug, history) => {
-        console.log(debug);
-        historyBox.value = history;
-    };
     const p = new URL(window.location.href).searchParams;
     const userId = p.get('userId') || '';
     sessionIdBox.value = p.get('sessionId') || '';
@@ -126,6 +124,33 @@
     sessionIdBox.addEventListener('change', updateUrls);
     offsetInput.addEventListener('change', updateUrls);
     limitInput.addEventListener('change', updateUrls);
+    const addCopyListener = (el, val, copyMsg) => {
+        let cancel = null;
+        el.addEventListener('click', () => {
+            if (cancel) return;
+            navigator.clipboard.writeText(val());
+            const v = el.innerText;
+            el.innerText = copyMsg;
+            cancel = () => {
+                if (!cancel) return;
+                el.innerText = v;
+                cancel = null;
+            };
+            setTimeout(() => cancel?.(), 750);
+        });
+        return () => cancel?.();
+    };
+    const cancelSessionIdCopy = addCopyListener(sessionIdLabel, () => sessionIdBox.value, '(session ID copied)');
+    const cancelHistoryCopy = addCopyListener(historyLabel, () => historyBox.value, '(history copied)');
+    const cancelCopies = () => {
+        cancelSessionIdCopy();
+        cancelHistoryCopy();
+    };
+    const onResp = (debug, history) => {
+        console.log(debug);
+        cancelCopies();
+        historyBox.value = history;
+    };
     submitButton.addEventListener('click', async () => {
         const sessionId = sessionIdBox.value.trim();
         const offset = parseInt(offsetInput.value.trim());

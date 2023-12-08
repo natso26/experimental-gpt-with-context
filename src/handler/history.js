@@ -5,11 +5,17 @@ import wrapper from '../util/wrapper.js';
 
 const externalHistory = wrapper.logCorrelationId('handler.history.externalHistory', async (correlationId, body) => {
     const {userId, sessionId, offset, limit} = body;
-    if (!common.isUuidV4(userId)
-        || !common.isUuidV4(sessionId)
-        || !(common.isInteger(offset) && offset >= 0)
-        || !(common.isInteger(limit) && limit >= 1)) {
-        throw new Error('fields `userId`, `sessionId` must be UUID v4; `offset` must be nonnegative integer; `limit` must be positive integer');
+    if (!common.isUuidV4(userId)) {
+        throw new Error(`field \`userId\` must be UUID v4: ${userId}`);
+    }
+    if (!common.isUuidV4(sessionId)) {
+        throw new Error(`field \`sessionId\` must be UUID v4: ${sessionId}`);
+    }
+    if (!common.isInteger(offset) || !(offset >= 0)) {
+        throw new Error(`field \`offset\` must be nonnegative integer: ${offset}`);
+    }
+    if (!common.isInteger(limit) || !(limit >= 1)) {
+        throw new Error(`field \`limit\` must be positive integer: ${limit}`);
     }
     const {isDev} = await user_.getRole(correlationId, userId);
     const ret = await history_.getHistory(correlationId, userId, sessionId, offset, limit);
