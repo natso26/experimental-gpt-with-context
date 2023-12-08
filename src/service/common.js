@@ -150,7 +150,7 @@ const warnings = () => {
         const realExtra = !ex ? extra : {...extra, ...ex};
         log.log(realMessage, realExtra);
         arr.push(realMessage);
-    }
+    };
     const f = (message, extra = {}, e = null) => add(warnings.normal, message, extra, e);
     f.strong = (message, extra = {}, e = null) => add(warnings.strong, message, extra, e);
     f.merge = (other) => {
