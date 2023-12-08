@@ -5,10 +5,14 @@ import wrapper from '../util/wrapper.js';
 
 const externalQuery = wrapper.logCorrelationId('handler.query.externalQuery', async (correlationId, onPartial, body) => {
     const {userId, sessionId, query} = body;
-    if (!common.isUuidV4(userId)
-        || !common.isUuidV4(sessionId)
-        || !common.isNonEmptyString(query)) {
-        throw new Error('fields `userId`, `sessionId` must be UUID v4; `query` must be nonempty string');
+    if (!common.isUuidV4(userId)) {
+        throw new Error(`field \`userId\` must be UUID v4: ${userId}`);
+    }
+    if (!common.isUuidV4(sessionId)) {
+        throw new Error(`field \`sessionId\` must be UUID v4: ${sessionId}`);
+    }
+    if (!common.isNonEmptyString(query)) {
+        throw new Error(`field \`query\` must be nonempty string: ${query}`);
     }
     const {isDev} = await user_.getRole(correlationId, userId);
     let partialReply = '';

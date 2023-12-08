@@ -61,12 +61,12 @@
     </style>
 </head>
 <body>
-<label for="session-id">Session ID</label>
+<label for="session-id" id="session-id-label">Session ID</label>
 <div>
-    <textarea class="text-box" id="session-id" rows="1"></textarea>
+    <textarea class="text-box" id="session-id" maxlength="36" rows="1"></textarea>
 </div>
 <br>
-<label for="query">Query</label>
+<label for="query" id="query-label">Query</label>
 <div>
     <textarea class="text-box" id="query" rows="4"></textarea>
 </div>
@@ -77,17 +77,20 @@
     </a>
 </div>
 <br><br>
-<label for="reply">Reply</label>
+<label for="reply" id="reply-label">Reply</label>
 <div>
     <textarea class="text-box" disabled id="reply" rows="16"></textarea>
 </div>
 <div class="footnote"><span id="note"></span></div>
 
 <script>
+    const sessionIdLabel = document.getElementById('session-id-label');
     const sessionIdBox = document.getElementById('session-id');
+    const queryLabel = document.getElementById('query-label');
     const queryBox = document.getElementById('query');
     const submitButton = document.getElementById('submit');
     const toHistoryLink = document.getElementById('to-history');
+    const replyLabel = document.getElementById('reply-label');
     const replyBox = document.getElementById('reply');
     const noteArea = document.getElementById('note');
     const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -102,20 +105,45 @@
         p.set('sessionId', sessionId);
         window.history.pushState({}, '', url);
     };
-    let debugResp = null;
-    let isdebugRespBeingCopied = false;
-    const onResp = (debug, reply, note) => {
-        console.log(debug);
-        debugResp = debug;
-        replyBox.value = reply;
-        isdebugRespBeingCopied = false;
-        noteArea.innerText = note;
-    };
     const p = new URL(window.location.href).searchParams;
     const userId = p.get('userId') || '';
     sessionIdBox.value = p.get('sessionId') || uuidv4();
     updateUrls();
     sessionIdBox.addEventListener('change', updateUrls);
+    const addCopyListener = (el, val, copyMsg) => {
+        let cancel = null;
+        el.addEventListener('click', () => {
+            if (cancel) return;
+            navigator.clipboard.writeText(val());
+            const v = el.innerText;
+            el.innerText = copyMsg;
+            cancel = () => {
+                if (!cancel) return;
+                el.innerText = v;
+                cancel = null;
+            };
+            setTimeout(() => cancel?.(), 750);
+        });
+        return () => cancel?.();
+    };
+    const cancelSessionIdCopy = addCopyListener(sessionIdLabel, () => sessionIdBox.value, '(session ID copied)');
+    const cancelQueryCopy = addCopyListener(queryLabel, () => queryBox.value, '(query copied)');
+    const cancelReplyCopy = addCopyListener(replyLabel, () => replyBox.value, '(reply copied)');
+    let debugResp = null;
+    const cancelNoteCopy = addCopyListener(noteArea, () => JSON.stringify(debugResp, null, 2), '(response copied)');
+    const cancelCopies = () => {
+        cancelSessionIdCopy();
+        cancelQueryCopy();
+        cancelReplyCopy();
+        cancelNoteCopy();
+    };
+    const onResp = (debug, reply, note) => {
+        console.log(debug);
+        debugResp = debug;
+        cancelCopies();
+        replyBox.value = reply;
+        noteArea.innerText = note;
+    };
     submitButton.addEventListener('click', async () => {
         const sessionId = sessionIdBox.value.trim();
         const query = queryBox.value;
@@ -193,18 +221,6 @@
         sessionIdBox.disabled = false;
         queryBox.disabled = false;
         submitButton.disabled = false;
-    });
-    noteArea.addEventListener('click', () => {
-        if (isdebugRespBeingCopied) return;
-        isdebugRespBeingCopied = true;
-        navigator.clipboard.writeText(JSON.stringify(debugResp, null, 2));
-        const note = noteArea.innerText;
-        noteArea.innerText = '(response copied)';
-        setTimeout(() => {
-            if (!isdebugRespBeingCopied) return;
-            noteArea.innerText = note;
-            isdebugRespBeingCopied = false;
-        }, 750);
     });
 </script>
 </body>
