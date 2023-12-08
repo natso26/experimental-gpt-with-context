@@ -3,14 +3,19 @@ import fetch_ from '../../util/fetch.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
+import time from '../../util/time.js';
 
 const URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4-1106-preview';
 const TOP_P = strictParse.float(process.env.CHAT_COMPLETIONS_API_TOP_P);
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
+const _DEV_FLAG_NOT_STREAM = false;
+(process.env.ENV === 'local' || !_DEV_FLAG_NOT_STREAM) || (() => {
+    throw new Error('_DEV_FLAG_NOT_STREAM not correctly set');
+})();
 
-const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, content, maxTokens, shortCircuitHook, fn) => {
-    const start = Date.now();
+const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, content, maxTokens, shortCircuitHook, fn, warnings) => {
+    const timer = time.timer();
     const resp = await fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -18,7 +23,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             'Authorization': `Bearer ${common_.SECRETS.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-            stream: true,
+            stream: !_DEV_FLAG_NOT_STREAM,
             model: MODEL,
             // NB: forego chat capabilities in favor of a single system message
             messages: [
@@ -49,7 +54,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         log.log(msg, {correlationId, body});
         throw new Error(msg);
     }
-    const data = await streamReadBody(correlationId, onPartial, resp, start, shortCircuitHook);
+    const data = await streamReadBody(correlationId, onPartial, resp, timer, shortCircuitHook, warnings);
     try {
         resp.body.destroy(); // early return
     } catch (e) {
@@ -81,7 +86,10 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     return out;
 });
 
-const streamReadBody = async (correlationId, onPartial, resp, start, shortCircuitHook) => {
+const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircuitHook, warnings) => {
+    if (_DEV_FLAG_NOT_STREAM) {
+        return await _notStreamReadBody(correlationId, resp);
+    }
     let content = '';
     let toolCalls = [];
     const processChunk = (chunk) => {
@@ -148,11 +156,20 @@ const streamReadBody = async (correlationId, onPartial, resp, start, shortCircui
                 currChunk += line;
             }
         }
-        if (Date.now() - start > TIMEOUT) { // separate from req timeout
-            log.log('chat completions api: timeout', {correlationId});
+        if (1000 * timer.elapsed() > TIMEOUT) { // separate from req timeout
+            warnings.strong('chat completions api: timeout', {correlationId});
             break;
         }
     }
+    return {content, toolCalls};
+};
+
+const _notStreamReadBody = async (correlationId, resp) => {
+    const data = await resp.json();
+    log.log('chat completions api: data', {correlationId, data});
+    const {content: content_, tool_calls: toolCalls_} = data.choices[0].message;
+    const content = content_ || '';
+    const toolCalls = (toolCalls_ || []).map(({function: {name, arguments: args}}) => ({name, args}));
     return {content, toolCalls};
 };
 

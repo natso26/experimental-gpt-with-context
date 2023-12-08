@@ -175,7 +175,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
         const localChatTimer = time.timer();
         const {content: localReply, functionCalls: localFunctionCalls} = await common.chatWithRetry(
-            correlationId, onPartialChat, localPrompt, REPLY_TOKEN_COUNT_LIMIT, actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null);
+            correlationId, onPartialChat, localPrompt, REPLY_TOKEN_COUNT_LIMIT, actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null, warnings);
         elapsedChats.push(localChatTimer.elapsed());
         const localPromptTokenCount = await tokenizer.countTokens(correlationId, localPrompt);
         promptTokenCounts.push(localPromptTokenCount);

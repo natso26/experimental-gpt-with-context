@@ -1,6 +1,12 @@
 Inventio
 ========
 
+https://experimental-gpt-with-context-cbzjb4ar2q-as.a.run.app
+
+https://nightly---experimental-gpt-with-context-cbzjb4ar2q-as.a.run.app
+
+NB: need user ID granted by me.
+
 
 Data
 ----

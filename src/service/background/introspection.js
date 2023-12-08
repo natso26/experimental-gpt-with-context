@@ -21,6 +21,7 @@ const TOKEN_COUNT_LIMIT = strictParse.int(process.env.INTROSPECTION_TOKEN_COUNT_
 
 const introspect = wrapper.logCorrelationId('service.background.introspection.introspect', async (correlationId, userId, sessionId, index) => {
     log.log('introspect: parameters', {correlationId, userId, sessionId, index});
+    const warnings = common.warnings();
     const docId = common.DOC_ID.from(userId, sessionId);
     const waitTime = Math.exp(Math.log(MIN_WAIT_TIME)
         + Math.random() * (Math.log(MAX_WAIT_TIME) - Math.log(MIN_WAIT_TIME)));
@@ -34,6 +35,7 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
             {correlationId, index, latestIndex});
         return {
             introspection: null,
+            warnings: warnings.get(),
         };
     }
     const context = rawContext.filter(({[common.INTROSPECTION_FIELD]: introspection}) => !introspection)
@@ -49,7 +51,7 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
     const prompt = MODEL_PROMPT(context);
     log.log('introspect: prompt', {correlationId, docId, prompt});
     const chatTimer = time.timer();
-    const {content: introspection} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null);
+    const {content: introspection} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
     const elapsedChat = chatTimer.elapsed();
     const {embedding: introspectionEmbedding} = await common.embedWithRetry(correlationId, introspection);
     const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
@@ -71,6 +73,7 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
     const dbExtra = {
         ...extra,
         prompt,
+        warnings: warnings.get(),
     };
     const {index: introspectionIndex, timestamp} = await memory.add(correlationId, docId, {
         [common.INTROSPECTION_FIELD]: introspection,
@@ -81,6 +84,7 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
         timestamp,
         introspection,
         ...extra,
+        warnings: warnings.get(),
     };
 });
 

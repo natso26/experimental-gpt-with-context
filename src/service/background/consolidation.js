@@ -20,6 +20,7 @@ const TOKEN_COUNT_LIMIT = strictParse.int(process.env.CONSOLIDATION_TOKEN_COUNT_
 
 const consolidate = wrapper.logCorrelationId('service.background.consolidation.consolidate', async (correlationId, userId, sessionId) => {
     log.log('consolidate: parameters', {correlationId, userId, sessionId});
+    const warnings = common.warnings();
     const docId = common.DOC_ID.from(userId, sessionId);
     const rawConsolidationRes = await memory.consolidate(correlationId, docId, async (lvl, raw) => {
         const timer = time.timer();
@@ -44,7 +45,7 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
         const prompt = MODEL_PROMPT(context);
         log.log('consolidate: prompt', {correlationId, docId, lvl, prompt});
         const chatTimer = time.timer();
-        const {content: summary} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null);
+        const {content: summary} = await common.chatWithRetry(correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
         const elapsedChat = chatTimer.elapsed();
         const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
         const promptTokenCount = await tokenizer.countTokens(correlationId, prompt);
@@ -64,6 +65,7 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
         const dbExtra = {
             ...extra,
             prompt,
+            warnings: warnings.get(),
         };
         return {
             consolidation: {
@@ -81,6 +83,7 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
         ({lvl, index, timestamp, passOnRet}) => ({lvl, index, timestamp, ...passOnRet}));
     return {
         consolidationRes,
+        warnings: warnings.get(),
     };
 });
 
