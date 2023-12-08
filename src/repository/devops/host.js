@@ -1,6 +1,7 @@
 import cloudrun from '@google-cloud/run';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
+import error from '../../util/error.js';
 
 const CLOUD_RUN_SERVICES_CLIENT_CALL_OPTIONS = {
     timeout: strictParse.int(process.env.CLOUD_RUN_SERVICES_CLIENT_TIMEOUT_SECS) * 1000,
@@ -55,8 +56,7 @@ const getBaseUrl = async (correlationId) => {
                 const stableRevision = strictParse.int(r[0].revision.split('-').at(-2));
                 return revision === stableRevision ? baseUrl : nightlyBaseUrl;
             } catch (e) {
-                log.log('getBaseUrl: error',
-                    {correlationId, error: e.message || '', stack: e.stack || ''});
+                log.log('getBaseUrl: error', {correlationId, ...error.explain(e)});
                 throw e;
             }
     }

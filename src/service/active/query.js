@@ -10,6 +10,7 @@ import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
 import time from '../../util/time.js';
+import error from '../../util/error.js';
 
 const QUERY_INTERNAL_URL = (baseUrl) => `${baseUrl}${common_.QUERY_INTERNAL_ROUTE}`;
 const RESEARCH_INTERNAL_URL = (baseUrl) => `${baseUrl}${common_.RESEARCH_INTERNAL_ROUTE}`;
@@ -69,9 +70,6 @@ const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_INFO_TRUNC
 const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_TRUNCATION_TOKEN_COUNT);
 const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
 const MAX_ITERS_WITH_ACTIONS = strictParse.int(process.env.QUERY_MAX_ITERS_WITH_ACTIONS);
-const MAX_ACTION_COUNTS = {
-    [MODEL_FUNCTION_KIND_RESEARCH]: strictParse.int(process.env.QUERY_MAX_RESEARCH_ACTION_COUNT),
-};
 const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_COUNT);
 const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
 const CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY);
@@ -169,7 +167,6 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     let reply = '';
     let isFinalIter = !!recursedQuery; // NB: recurse once
     let i = 0;
-    const actionCounts = {};
     while (true) {
         const localPrompt = MODEL_PROMPT(
             info, search, actionHistory, [...actionsForPrompt].reverse(), longTermContext, shortTermContext, query, recursedNote, recursedQuery);
@@ -218,12 +215,6 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                     {correlationId, docId, i, args});
                 continue;
             }
-            if (MAX_ACTION_COUNTS[kind] !== undefined && (actionCounts[kind] || 0) >= MAX_ACTION_COUNTS[kind]) {
-                log.log(`query: iter ${i}: function call: at max action count`,
-                    {correlationId, docId, i, kind, actionCounts});
-                continue;
-            }
-            actionCounts[kind] = (actionCounts[kind] || 0) + 1;
             rawLocalActionTasks.push((async () => {
                 let actionFn;
                 switch (kind) {
@@ -277,8 +268,8 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 [common.RECURSED_QUERY_FIELD]: recursedNextQuery,
                 [common.REPLY_FIELD]: reply,
             }, actiobDbExtra).catch((e) => {
-                warnings.strong(`query: iter ${i}: function call: add action failed; warn`,
-                    {correlationId, docId, i, actionLvl, error: e.message || '', stack: e.stack || ''});
+                warnings.strong(`query: iter ${i}: function call: add action failed`,
+                    {correlationId, docId, i, actionLvl}, e);
                 return {index: null, timestamp: null};
             });
             actionCosts.push(data?.cost || null);
@@ -364,8 +355,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 [common.REPLY_EMBEDDING_FIELD]: replyEmbedding,
             }, dbExtra, false);
         })().catch((e) => {
-            warnings.strong('query: add failed; warn',
-                {correlationId, docId, error: e.message || '', stack: e.stack || ''});
+            warnings.strong('query: add failed', {correlationId, docId}, e);
             return {index: null, timestamp: null};
         }),
         setScheduledImagination(correlationId, docId, warnings),
@@ -422,8 +412,7 @@ const getInfo = async (correlationId, docId, recursedQuery, warnings) => {
             infoTokenCount = Math.min(tokenCount, INFO_TRUNCATION_TOKEN_COUNT);
         }
     } catch (e) {
-        warnings('query: wolfram alpha query failed; not critical',
-            {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
+        warnings('query: wolfram alpha query failed', {correlationId, docId, recursedQuery}, e);
     }
     log.log('query: info', {correlationId, docId, info, infoTokenCount});
     return {info, infoTokenCount};
@@ -441,8 +430,7 @@ const getSearch = async (correlationId, docId, recursedQuery, warnings) => {
             searchTokenCount = Math.min(tokenCount, SEARCH_TRUNCATION_TOKEN_COUNT);
         }
     } catch (e) {
-        warnings('query: serp search failed; not critical',
-            {correlationId, docId, recursedQuery, error: e.message || '', stack: e.stack || ''});
+        warnings('query: serp search failed', {correlationId, docId, recursedQuery}, e);
     }
     log.log('query: search', {correlationId, docId, search, searchTokenCount});
     return {search, searchTokenCount};
@@ -587,10 +575,8 @@ const thinkAction = async (correlationId, docId, query, recursedNextNote, recurs
         const {reply} = data;
         return {reply, data};
     } catch (e) {
-        warnings.strong('query: action: think: failed; warn', {
-            correlationId, docId, recursedNextQuery, recursedCorrelationId,
-            error: e.message || '', stack: e.stack || '',
-        });
+        warnings.strong('query: action: think: failed',
+            {correlationId, docId, recursedNextQuery, recursedCorrelationId}, e);
         return {reply: null};
     }
 };
@@ -626,10 +612,8 @@ const researchAction = async (correlationId, docId, query, recursedNextNote, rec
         const {reply} = data;
         return {reply, data};
     } catch (e) {
-        warnings.strong('query: action: research: failed; warn', {
-            correlationId, docId, recursedNextQuery, recursedCorrelationId,
-            error: e.message || '', stack: e.stack || '',
-        });
+        warnings.strong('query: action: research: failed',
+            {correlationId, docId, recursedNextQuery, recursedCorrelationId}, e);
         return {reply: null};
     }
 };
@@ -650,8 +634,7 @@ const setScheduledImagination = async (correlationId, docId, warnings) => {
         log.log('query: scheduled imagination', {correlationId, docId, scheduledImagination});
         return scheduledImagination;
     }).catch((e) => {
-        warnings('query: schedule imagination failed; not critical',
-            {correlationId, docId, error: e.message || '', stack: e.stack || ''});
+        warnings('query: schedule imagination failed', {correlationId, docId}, e);
         return null;
     });
 };
@@ -673,7 +656,7 @@ const triggerBackgroundTasks = async (correlationId, docId, index, baseUrlTask, 
             body: JSON.stringify({userId, sessionId}),
         }, 60 * 1000).catch((e) => (e.name !== 'AbortError') &&
             log.log(`query: fetch ${common_.CONSOLIDATE_INTERNAL_ROUTE} failed`,
-                {correlationId, docId, error: e.message || '', stack: e.stack || ''}));
+                {correlationId, docId, ...error.explain(e)}));
         fetch_.withTimeout(INTROSPECT_INTERNAL_URL(baseUrl), {
             method: 'POST',
             headers: {
@@ -684,10 +667,9 @@ const triggerBackgroundTasks = async (correlationId, docId, index, baseUrlTask, 
             body: JSON.stringify({userId, sessionId, index}),
         }, 60 * 1000).catch((e) => (e.name !== 'AbortError') &&
             log.log(`query: fetch ${common_.INTROSPECT_INTERNAL_ROUTE} failed`,
-                {correlationId, docId, error: e.message || '', stack: e.stack || ''}));
+                {correlationId, docId, ...error.explain(e)}));
     } catch (e) {
-        warnings('query: trigger background tasks failed; not critical',
-            {correlationId, docId, error: e.message || '', stack: e.stack || ''});
+        warnings('query: trigger background tasks failed', {correlationId, docId}, e);
     }
 };
 

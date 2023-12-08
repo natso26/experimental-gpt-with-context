@@ -11,6 +11,7 @@ import common from './common.js';
 import strictParse from './util/strictParse.js';
 import log from './util/log.js';
 import wrapper from './util/wrapper.js';
+import error from './util/error.js';
 
 const HTML_FILES_ROOT_PATH = './public';
 const INDEX_HTML_FILE = 'index.html';
@@ -43,9 +44,9 @@ const wrapHandler = (name, handlerFn) => async (req, res) => {
             log.log(`${name} ${correlationId} response body`, {name, correlationId, ret});
             res.json(ret);
         } catch (e) {
-            const ret = {error: e.message ?? ''};
-            log.log(`${name} ${correlationId} response error`, {name, correlationId, ...ret, stack: e.stack ?? ''});
-            res.status(500).json(ret);
+            const ex = error.explain(e);
+            log.log(`${name} ${correlationId} response error`, {name, correlationId, ...ex});
+            res.status(500).json({error: ex.error});
         }
     })(req.correlationId);
 };
@@ -69,9 +70,9 @@ const wrapHandlerSse = (name, handlerFn) => async (req, res) => {
             log.log(`${name} ${correlationId} response body`, {name, correlationId, ret});
             doWrite({state: 'success', data: ret});
         } catch (e) {
-            const ret = {error: e.message ?? ''};
-            log.log(`${name} ${correlationId} response error`, {name, correlationId, ...ret, stack: e.stack ?? ''});
-            doWrite({state: 'error', data: ret});
+            const ex = error.explain(e);
+            log.log(`${name} ${correlationId} response error`, {name, correlationId, ...ex});
+            doWrite({state: 'error', data: {error: ex.error}});
         } finally {
             if (intervalId) {
                 clearInterval(intervalId);

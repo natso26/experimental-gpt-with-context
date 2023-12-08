@@ -215,13 +215,14 @@
                 }
             }
         } catch (e) {
-            onResp({e: {error: e.message || '', stack: e.stack || ''}},
-                e.message || 'There was an error fetching the response.', `${formattedElapsed()} (failed)`);
+            const ex = explainError(e);
+            onResp({e: ex}, ex.error, `${formattedElapsed()} (failed)`);
         }
         sessionIdBox.disabled = false;
         queryBox.disabled = false;
         submitButton.disabled = false;
     });
+    const explainError = (e) => ({error: `${e.name || ''}: ${e.message || ''}`, stack: e.stack || ''});
 </script>
 </body>
 </html>

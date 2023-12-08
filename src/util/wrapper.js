@@ -1,4 +1,5 @@
 import log from './log.js';
+import error from './error.js';
 
 const logCorrelationId = (name, fn) => async (correlationId, ...args) => {
     log.log(`[Start] ${name}`, {correlationId});
@@ -10,10 +11,8 @@ const logCorrelationId = (name, fn) => async (correlationId, ...args) => {
         return ret;
     } catch (e) {
         const elapsed = (Date.now() - start) / 1000;
-        log.log(`[Failed] ${name}, elapsed: ${elapsed.toFixed(3)} s`, {
-            correlationId, elapsed,
-            error: e.message || '', stack: e.stack || '',
-        });
+        log.log(`[Failed] ${name}, elapsed: ${elapsed.toFixed(3)} s`,
+            {correlationId, elapsed, ...error.explain(e)});
         throw e;
     }
 };
