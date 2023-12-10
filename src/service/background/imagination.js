@@ -20,9 +20,9 @@ const TOKEN_COUNT_LIMIT = strictParse.int(process.env.IMAGINATION_TOKEN_COUNT_LI
 
 const imagine = wrapper.logCorrelationId('service.background.imagination.imagine', async (correlationId) => {
     log.log('imagine: parameters', {correlationId});
-    const warnings = common.warnings();
     const imagineRes = await memory.imagine(correlationId, new Date(), async (docId) => {
         log.log(`imagine: imagine for doc ID ${docId}`, {correlationId, docId});
+        const warnings = common.warnings();
         const timer = time.timer();
         let selectedEmbedding;
         const rawContext = await memory.longTermSearch(correlationId, docId, (getConsolidations, consolidation) => {
@@ -89,11 +89,11 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
             timestamp,
             imagination,
             ...extra,
+            warnings: warnings.get(),
         };
     });
     return {
         imagineRes,
-        warnings: warnings.get(),
     };
 });
 

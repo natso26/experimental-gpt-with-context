@@ -29,10 +29,7 @@ const anySignal = (signals) => {
     return signal;
 };
 
-const parseRespBody = async (resp) => {
-    const body = await resp.json().catch((_) => resp.text());
-    return body;
-};
+const parseRespBody = (resp) => resp.json().catch((_) => resp.text());
 
 export default {
     withTimeout,
