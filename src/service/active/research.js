@@ -65,14 +65,14 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const rawAnswerTasks = [...Array(answerTaskCount).keys()].map((i) => (async () => {
         const answerTimer = time.timer();
         let currI = i;
-        let answer = '';
+        let reply = '';
         let data = null;
         for (let j = 0; j <= RETRY_NEW_URL_COUNT; j++) {
             const o = await getAnswer(
                 correlationId, docId, query, recursedNote, recursedQuery, urls[currI]);
-            answer = o.answer;
+            reply = o.reply;
             data = o.data;
-            if (answer || availableI >= urls.length || j === RETRY_NEW_URL_COUNT) {
+            if (reply || availableI >= urls.length || j === RETRY_NEW_URL_COUNT) {
                 break;
             }
             log.log('research: no answer; retry new url', {correlationId, docId, oldUrl: urls[currI]});
@@ -83,7 +83,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             warnings.merge(data?.warnings);
         }
         return {
-            answer,
+            reply,
             data,
             url: urls[currI],
             timeStats: {
@@ -92,17 +92,17 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         };
     })());
     const answers = await Promise.all(rawAnswerTasks.map((task) => task.then(async (res) => {
-            const {answer, data, url, timeStats} = res;
-            if (!answer) {
+            const {reply, data, url, timeStats} = res;
+            if (!reply) {
                 return {
-                    answer,
+                    reply,
                     url,
                     timeStats,
                 };
             }
             const actiobDbExtra = {
                 correlationId,
-                data,
+                ...data,
                 url,
                 timeStats,
             };
@@ -110,14 +110,14 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
                 [common.KIND_FIELD]: ACTION_KIND_ANSWER,
                 [common.RECURSED_NOTE_FIELD]: recursedNote || '',
                 [common.RECURSED_QUERY_FIELD]: recursedQuery,
-                [common.REPLY_FIELD]: answer,
+                [common.REPLY_FIELD]: reply,
             }, actiobDbExtra).catch((e) => {
                 warnings.strong('research: add answer failed', {correlationId, docId}, e);
                 return {index: null, timestamp: null};
             });
             answerCosts.push(data?.cost || null);
             return {
-                answer,
+                reply,
                 url,
                 timeStats,
                 index,
@@ -125,8 +125,8 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             };
         })
     ));
-    const answersForPrompt = answers.filter(({answer}) => answer)
-        .map(({answer}) => answer);
+    const answersForPrompt = answers.filter(({reply}) => reply)
+        .map(({reply}) => reply);
     if (!answersForPrompt.length) {
         return {
             state: 'no-answers',
@@ -140,7 +140,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const answersShortCircuitHook = common.shortCircuitAutocompleteContentHook(
         correlationId, SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS);
     await Promise.all(answersForPrompt.map(
-        (answer) => answersShortCircuitHook.add(answer)));
+        (reply) => answersShortCircuitHook.add(reply)));
     const conclusionPrompt = MODEL_CONCLUSION_PROMPT(answersForPrompt, query, recursedNote, recursedQuery);
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
     const conclusionTimer = time.timer();
@@ -150,7 +150,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     return {
         state: 'success',
         reply: conclusion,
-        answers,
+        actions: answers,
         tokenCounts: {
             recursedNote: recursedNoteTokenCount,
             recursedQuery: recursedQueryTokenCount,
@@ -185,7 +185,7 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
     log.log('research: get answer: parameters', {correlationId, docId, query, recursedNote, recursedQuery, url});
     const warnings = common.warnings();
     let input = '';
-    let answer = '';
+    let reply = '';
     let inputTokenCount = 0;
     let usage = chat.EMPTY_USAGE();
     try {
@@ -202,9 +202,9 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
             } else {
                 const answerPrompt = MODEL_ANSWER_PROMPT(input, query, recursedNote, recursedQuery);
                 log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
-                const {content: answer_, usage: usage_} = await common.chatWithRetry(
+                const {content: reply_, usage: usage_} = await common.chatWithRetry(
                     correlationId, null, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null, null, warnings);
-                answer = answer_;
+                reply = reply_;
                 usage = usage_;
             }
         }
@@ -213,7 +213,7 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
             {correlationId, docId, query, recursedNote, recursedQuery, url}, e);
     }
     return {
-        answer,
+        reply,
         data: {
             input,
             tokenCounts: {

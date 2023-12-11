@@ -3,6 +3,7 @@ import express from 'express';
 import * as uuid from 'uuid';
 import 'dotenv/config';
 import query from './handler/query.js';
+import details from './handler/details.js';
 import history from './handler/history.js';
 import consolidate from './handler/consolidate.js';
 import introspect from './handler/introspect.js';
@@ -18,6 +19,7 @@ import error from './util/error.js';
 const INDEX_HTML_PATH = './public/index.html';
 const PAGES = {
     query: 'query',
+    details: 'details',
     history: 'history',
 };
 const VERSION = process.env.VERSION;
@@ -98,21 +100,16 @@ const wrapHandlerSse = (name, handlerFn) => async (req, res) => {
     })(req.correlationId);
 };
 
-const indexHandler = async (req, res) => {
-    const params = {page: PAGES.query, version: VERSION};
+const pageHandler = (page) => async (req, res) => {
+    const params = {page, version: VERSION};
     log.log(`render ${INDEX_HTML_PATH}, params ${JSON.stringify(params)}`, {params});
     const content = await RENDER_INDEX_HTML(params);
     res.setHeader('Content-Type', 'text/html');
     res.send(content);
 };
-
-const historyHandler = async (req, res) => {
-    const params = {page: PAGES.history, version: VERSION};
-    log.log(`render ${INDEX_HTML_PATH}, params ${JSON.stringify(params)}`, {params});
-    const content = await RENDER_INDEX_HTML(params);
-    res.setHeader('Content-Type', 'text/html');
-    res.send(content);
-};
+const indexHandler = pageHandler(PAGES.query);
+const detailsHandler = pageHandler(PAGES.details);
+const historyHandler = pageHandler(PAGES.history);
 
 const pingInternalHandler = async (req, res) => {
     await wrapper.logCorrelationId(common.PING_INTERNAL_ROUTE,
@@ -124,8 +121,10 @@ app.use(versionMiddleware);
 app.use(common.API_ROUTE_PREFIX, correlationIdMiddleware, express.json());
 app.use(common.INTERNAL_ROUTE_PREFIX, internalApiAuthMiddleware, correlationIdMiddleware, express.json());
 app.get(common.INDEX_ROUTE, indexHandler);
+app.get(common.DETAILS_ROUTE, detailsHandler);
 app.get(common.HISTORY_ROUTE, historyHandler);
 app.post(common.QUERY_API_ROUTE, wrapHandlerSse(common.QUERY_API_ROUTE, query.externalQuery));
+app.post(common.DETAILS_API_ROUTE, wrapHandler(common.DETAILS_API_ROUTE, details.externalDetails));
 app.post(common.HISTORY_API_ROUTE, wrapHandler(common.HISTORY_API_ROUTE, history.externalHistory));
 app.get(common.PING_INTERNAL_ROUTE, pingInternalHandler);
 app.post(common.QUERY_INTERNAL_ROUTE, wrapHandler(common.QUERY_INTERNAL_ROUTE, query.internalQuery));

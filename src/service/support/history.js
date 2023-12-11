@@ -4,7 +4,7 @@ import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
 
 const getHistory = wrapper.logCorrelationId('service.support.history.getHistory', async (correlationId, userId, sessionId, offset, limit) => {
-    log.log('history: parameters', {correlationId, userId, sessionId, offset, limit});
+    log.log('getHistory: parameters', {correlationId, userId, sessionId, offset, limit});
     const docId = common.DOC_ID.from(userId, sessionId);
     const rawHistory = await memory.getHistory(correlationId, docId, offset, limit);
     const history = rawHistory.map((
