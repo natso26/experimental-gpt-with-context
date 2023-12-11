@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import express from 'express';
 import * as uuid from 'uuid';
 import 'dotenv/config';
@@ -10,13 +11,28 @@ import research from './handler/research.js';
 import common from './common.js';
 import strictParse from './util/strictParse.js';
 import log from './util/log.js';
+import cache from './util/cache.js';
 import wrapper from './util/wrapper.js';
 import error from './util/error.js';
 
-const HTML_FILES_ROOT_PATH = './public';
-const INDEX_HTML_FILE = 'index.html';
-const HISTORY_HTML_FILE = 'history.html';
+const INDEX_HTML_PATH = './public/index.html';
+const PAGES = {
+    query: 'query',
+    history: 'history',
+};
+const VERSION = process.env.VERSION;
 const SSE_KEEPALIVE_INTERVAL = strictParse.int(process.env.APP_SSE_KEEPALIVE_INTERVAL_SECS) * 1000;
+const RENDER_INDEX_HTML = wrapper.cache(
+    cache.lruTtl(10, 90000), ({page, version}) => `${version}-${page}`, async ({page, version}) => {
+        const s = await fs.promises.readFile(INDEX_HTML_PATH, {encoding: 'utf-8'});
+        return s.replace('{{ PAGE }}', page)
+            .replace('{{ VERSION }}', version);
+    });
+
+const versionMiddleware = (req, res, next) => {
+    res.setHeader('X-App-Version', VERSION);
+    next();
+};
 
 const internalApiAuthMiddleware = (req, res, next) => {
     const v = req.headers[common.INTERNAL_API_ACCESS_KEY_HEADER.toLowerCase()] || '';
@@ -83,13 +99,19 @@ const wrapHandlerSse = (name, handlerFn) => async (req, res) => {
 };
 
 const indexHandler = async (req, res) => {
-    log.log(`send ${INDEX_HTML_FILE}`);
-    res.sendFile(INDEX_HTML_FILE, {root: HTML_FILES_ROOT_PATH});
+    const params = {page: PAGES.query, version: VERSION};
+    log.log(`render ${INDEX_HTML_PATH}, params ${JSON.stringify(params)}`, {params});
+    const content = await RENDER_INDEX_HTML(params);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(content);
 };
 
 const historyHandler = async (req, res) => {
-    log.log(`send ${HISTORY_HTML_FILE}`);
-    res.sendFile(HISTORY_HTML_FILE, {root: HTML_FILES_ROOT_PATH});
+    const params = {page: PAGES.history, version: VERSION};
+    log.log(`render ${INDEX_HTML_PATH}, params ${JSON.stringify(params)}`, {params});
+    const content = await RENDER_INDEX_HTML(params);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(content);
 };
 
 const pingInternalHandler = async (req, res) => {
@@ -98,6 +120,7 @@ const pingInternalHandler = async (req, res) => {
 };
 
 const app = express();
+app.use(versionMiddleware);
 app.use(common.API_ROUTE_PREFIX, correlationIdMiddleware, express.json());
 app.use(common.INTERNAL_ROUTE_PREFIX, internalApiAuthMiddleware, correlationIdMiddleware, express.json());
 app.get(common.INDEX_ROUTE, indexHandler);

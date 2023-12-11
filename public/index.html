@@ -2,154 +2,401 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Inventio</title>
+    <title></title>
     <style>
+        :root {
+            --margin: 4px 0 0 0;
+            --border-thickness: 1px;
+            --body-padding: 15px 0 0 14px;
+            --text-box-width: 84%;
+            --text-box-padding: 10px;
+            --text-box-border-radius: 8px;
+            --number-input-width: 3em;
+            --number-input-padding: 4px;
+            --number-input-border-radius: 10px;
+            --button-width: 108px;
+            --button-padding: 8px;
+            --button-border-radius: 16px;
+            --font-family: monospace;
+            --font-size-l: 16px;
+            --font-size-m: 15px;
+            --font-size-s: 14px;
+            --color-primary: aliceblue;
+            --color-secondary: orange;
+            --color-black: #262626;
+            --color-gray: #bbb;
+            --content-width: calc(var(--text-box-width) + 2 * var(--text-box-padding) + 2 * var(--border-thickness));
+            --text-box-full-height: calc(100% - 2 * var(--text-box-padding) - 2 * var(--border-thickness));
+            --border: var(--border-thickness) solid var(--color-gray);
+        }
+
         html {
             -webkit-text-size-adjust: 100%;
         }
 
-        body {
-            font-family: monospace;
-            font-size: 16px;
-            margin: 15px 0 0 14px;
-            color: #262626;
+        ._flex-column {
+            display: flex;
+            flex-direction: column;
         }
 
-        .footnote {
-            font-size: 14px;
-            text-align: right;
-            width: calc(84% + 22px);
-            margin: 4px 0 0 0;
-            color: #bbb;
+        ._flex-grow {
+            flex-grow: 1;
+        }
+
+        ._hidden {
+            display: none;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: var(--body-padding);
+            margin: 0;
+            font-family: var(--font-family);
+            font-size: var(--font-size-l);
+            color: var(--color-black);
         }
 
         .text-box {
-            font-family: monospace;
-            font-size: 15px;
-            width: 84%;
-            border: 1px solid #bbb;
-            border-radius: 8px;
-            padding: 10px;
+            width: var(--text-box-width);
+            padding: var(--text-box-padding);
+            border-radius: var(--text-box-border-radius);
+            border: var(--border);
+            font-family: var(--font-family);
+            font-size: var(--font-size-m);
+        }
+
+        .text-box-full-height-override {
+            height: var(--text-box-full-height);
+        }
+
+        .number-input {
+            width: var(--number-input-width);
+            padding: var(--number-input-padding);
+            border-radius: var(--number-input-border-radius);
+            border: var(--border);
+            font-family: var(--font-family);
+            font-size: var(--font-size-m);
+            text-align: right;
         }
 
         .buttons-panel {
             display: flex;
             flex-direction: row;
-            width: calc(84% + 22px);
+            width: var(--content-width);
+            margin: var(--margin);
             justify-content: space-between;
             align-items: center;
-            margin: 4px 0 0 0;
         }
 
         .button {
-            font-family: monospace;
-            font-size: 14px;
-            width: 108px;
+            width: var(--button-width);
+            padding: var(--button-padding);
+            border-radius: var(--button-border-radius);
             border: none;
-            border-radius: 16px;
-            padding: 8px;
-            background-color: aliceblue;
+            font-family: var(--font-family);
+            font-size: var(--font-size-s);
+            background-color: var(--color-primary);
         }
 
-        .button-recolor {
-            background-color: orange;
+        .button-secondary-override {
+            background-color: var(--color-secondary);
         }
 
-        .button-shaped-link {
-            border-radius: 16px;
+        .footnote {
+            display: flex;
+            flex-direction: row;
+            width: var(--content-width);
+            margin: var(--margin);
+            font-size: var(--font-size-s);
+            color: var(--color-gray);
+            justify-content: space-between;
         }
     </style>
 </head>
 <body>
-<label for="session-id" id="session-id-label">Session ID</label>
-<div>
-    <textarea class="text-box" id="session-id" maxlength="36" rows="1"></textarea>
+<div class="_hidden" id="_page">{{ PAGE }}</div>
+<div id="_part-common">
+    <label for="session-id" id="session-id-label">Session ID</label>
+    <div><textarea class="text-box" id="session-id" maxlength="36" rows="1"></textarea></div>
 </div>
-<br>
-<label for="query" id="query-label">Query</label>
-<div>
-    <textarea class="text-box" id="query" rows="4"></textarea>
+<div class="_flex-grow _flex-column _hidden" id="_part-query">
+    <br>
+    <label for="query" id="query-label">Query</label>
+    <div><textarea class="text-box" id="query" rows="4"></textarea></div>
+    <div class="buttons-panel">
+        <button class="button" id="submit-query">Submit</button>
+        <button class="button button-secondary-override" id="to-history">History</button>
+    </div>
+    <br><br>
+    <label for="reply" id="reply-label">Reply</label>
+    <div><textarea class="text-box" disabled id="reply" rows="16"></textarea></div>
+    <div class="footnote"><span id="version">{{ VERSION }}</span><span id="note"></span></div>
 </div>
-<div class="buttons-panel">
-    <button class="button" id="submit">Submit</button>
-    <a class="button-shaped-link" href="/history" id="to-history">
-        <button class="button button-recolor">History</button>
-    </a>
+<div class="_flex-grow _flex-column _hidden" id="_part-history">
+    <div class="buttons-panel">
+        <div>
+            <label for="offset" id="offset-label">Offset</label>
+            <input class="number-input" id="offset" min="0" step="1" type="number">
+            <label for="limit" id="limit-label">Limit</label>
+            <input class="number-input" id="limit" min="1" step="1" type="number">
+            <button class="button" id="submit-history">Submit</button>
+        </div>
+        <button class="button button-secondary-override" id="to-query">Query</button>
+    </div>
+    <br><br>
+    <label for="history" id="history-label">History</label>
+    <div class="_flex-grow"><textarea class="text-box text-box-full-height-override" disabled id="history"></textarea>
+    </div>
 </div>
-<br><br>
-<label for="reply" id="reply-label">Reply</label>
-<div>
-    <textarea class="text-box" disabled id="reply" rows="16"></textarea>
-</div>
-<div class="footnote"><span id="note"></span></div>
 
 <script>
-    const sessionIdLabel = document.getElementById('session-id-label');
-    const sessionIdBox = document.getElementById('session-id');
-    const queryLabel = document.getElementById('query-label');
-    const queryBox = document.getElementById('query');
-    const submitButton = document.getElementById('submit');
-    const toHistoryLink = document.getElementById('to-history');
-    const replyLabel = document.getElementById('reply-label');
-    const replyBox = document.getElementById('reply');
-    const noteArea = document.getElementById('note');
-    const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-    });
-    const updateUrls = () => {
-        const sessionId = sessionIdBox.value.trim();
-        toHistoryLink.href = `/history?userId=${userId}&sessionId=${sessionId}`;
-        const url = new URL(window.location.href);
-        const p = url.searchParams;
-        p.set('sessionId', sessionId);
-        window.history.pushState({}, '', url);
-    };
-    const p = new URL(window.location.href).searchParams;
-    const userId = p.get('userId') || '';
-    sessionIdBox.value = p.get('sessionId') || uuidv4();
-    updateUrls();
-    sessionIdBox.addEventListener('change', updateUrls);
-    const addCopyListener = (el, val, copyMsg) => {
-        let cancel = null;
-        el.addEventListener('click', () => {
-            if (cancel) return;
-            navigator.clipboard.writeText(val());
-            const v = el.innerText;
-            el.innerText = copyMsg;
-            cancel = () => {
-                if (!cancel) return;
-                el.innerText = v;
-                cancel = null;
+    const QUERY_PATHNAME = '/';
+    const HISTORY_PATHNAME = '/history';
+    const QUERY_PAGE = 'query';
+    const HISTORY_PAGE = 'history';
+    const DEFAULT_HISTORY_LIMIT = 25;
+    const COPY_MSG_SHOW_MS = 750;
+    const COPY_SESSION_ID_MSG = '(session ID copied)';
+    const COPY_QUERY_MSG = '(query copied)';
+    const COPY_REPLY_MSG = '(reply copied)';
+    const COPY_NOTE_MSG = '(response copied)'; // NB: clicking note copies response
+    const COPY_HISTORY_MSG = '(history copied)';
+    const pageEl = document.getElementById('_page');
+    const sessionIdLabelEl = document.getElementById('session-id-label');
+    const sessionIdEl = document.getElementById('session-id');
+    const partQueryEl = document.getElementById('_part-query');
+    const queryLabelEl = document.getElementById('query-label');
+    const queryEl = document.getElementById('query');
+    const submitQueryEl = document.getElementById('submit-query');
+    const toHistoryEl = document.getElementById('to-history');
+    const replyLabelEl = document.getElementById('reply-label');
+    const replyEl = document.getElementById('reply');
+    const versionEl = document.getElementById('version');
+    const noteEl = document.getElementById('note');
+    const partHistoryEl = document.getElementById('_part-history');
+    const offsetEl = document.getElementById('offset');
+    const limitEl = document.getElementById('limit');
+    const submitHistoryEl = document.getElementById('submit-history');
+    const toQueryEl = document.getElementById('to-query');
+    const historyLabelEl = document.getElementById('history-label');
+    const historyEl = document.getElementById('history');
+    const paramsManager = (() => {
+        const pageManager = (() => {
+            let _page = '';
+            const get = () => ({page: _page});
+            const set = ({page}) => {
+                if (page === undefined) page = _page;
+                if (page !== _page) {
+                    let success = false;
+                    switch (page) {
+                        case QUERY_PAGE:
+                            partHistoryEl.classList.add('_hidden');
+                            partQueryEl.classList.remove('_hidden');
+                            document.title = 'Inventio';
+                            success = true;
+                            break;
+                        case HISTORY_PAGE:
+                            partQueryEl.classList.add('_hidden');
+                            partHistoryEl.classList.remove('_hidden');
+                            document.title = 'Inventio – History';
+                            success = true;
+                            break;
+                    }
+                    if (success) {
+                        pageEl.innerText = page;
+                        _page = page;
+                    }
+                }
             };
-            setTimeout(() => cancel?.(), 750);
+            set({page: pageEl.innerText === HISTORY_PAGE ? HISTORY_PAGE : QUERY_PAGE});
+            return {get, set};
+        })();
+        const urlManager = (() => {
+            let _url = null;
+            const get = () => {
+                const url = !_url ? null : new URL(_url);
+                return {url};
+            };
+            const set = ({url}) => {
+                if (url === undefined) url = _url;
+                if (url?.href !== _url?.href) {
+                    window.history.pushState({}, '', url);
+                    _url = url;
+                }
+            };
+            set({url: new URL(window.location.href)});
+            return {get, set};
+        })();
+        let _userId = '';
+        let _sessionId = '';
+        let _offset = null;
+        let _limit = null;
+        const get = () => ({
+            ...pageManager.get(),
+            userId: _userId, sessionId: _sessionId, offset: _offset, limit: _limit,
         });
-        return () => cancel?.();
-    };
-    const cancelSessionIdCopy = addCopyListener(sessionIdLabel, () => sessionIdBox.value, '(session ID copied)');
-    const cancelQueryCopy = addCopyListener(queryLabel, () => queryBox.value, '(query copied)');
-    const cancelReplyCopy = addCopyListener(replyLabel, () => replyBox.value, '(reply copied)');
-    let debugResp = null;
-    const cancelNoteCopy = addCopyListener(noteArea, () => JSON.stringify(debugResp, null, 2), '(response copied)');
-    const cancelCopies = () => {
-        cancelSessionIdCopy();
-        cancelQueryCopy();
-        cancelReplyCopy();
-        cancelNoteCopy();
-    };
-    const onResp = (debug, reply, note) => {
-        console.log(debug);
-        debugResp = debug;
-        cancelCopies();
-        replyBox.value = reply;
-        noteArea.innerText = note;
-    };
-    submitButton.addEventListener('click', async () => {
-        const sessionId = sessionIdBox.value.trim();
-        const query = queryBox.value;
-        sessionIdBox.disabled = true;
-        queryBox.disabled = true;
-        submitButton.disabled = true;
+        const set = ({page, userId, sessionId, offset, limit}) => {
+            if (page === undefined) {
+                const {page: page_} = pageManager.get();
+                page = page_;
+            }
+            if (userId === undefined) userId = _userId;
+            if (sessionId === undefined) sessionId = _sessionId;
+            if (offset === undefined || Number.isNaN(offset)) offset = _offset;
+            if (limit === undefined || Number.isNaN(limit)) limit = _limit;
+            pageManager.set({page});
+            const {url} = urlManager.get();
+            const p = new URLSearchParams();
+            switch (page) {
+                case QUERY_PAGE:
+                    url.pathname = QUERY_PATHNAME;
+                    if (userId) p.set('userId', userId);
+                    if (sessionId) p.set('sessionId', sessionId);
+                    break;
+                case HISTORY_PAGE:
+                    url.pathname = HISTORY_PATHNAME;
+                    if (userId) p.set('userId', userId);
+                    if (sessionId) p.set('sessionId', sessionId);
+                    if (offset !== 0) p.set('offset', `${offset}`);
+                    if (limit !== DEFAULT_HISTORY_LIMIT) p.set('limit', `${limit}`);
+                    break;
+            }
+            const p_ = `${p}`;
+            url.search = !p_ ? '' : `?${p_}`;
+            urlManager.set({url});
+            if (userId !== _userId) _userId = userId;
+            if (sessionId !== _sessionId) {
+                sessionIdEl.value = sessionId;
+                _sessionId = sessionId;
+            }
+            if (offset !== _offset) {
+                offsetEl.value = offset;
+                _offset = offset;
+            }
+            if (limit !== _limit) {
+                limitEl.value = limit;
+                _limit = limit;
+            }
+        };
+        const {url: {searchParams: p}} = urlManager.get();
+        const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+        set({
+            userId: p.get('userId') || '', sessionId: p.get('sessionId') || uuidv4(),
+            offset: parseInt(p.get('offset')) || 0, limit: parseInt(p.get('limit')) || DEFAULT_HISTORY_LIMIT,
+        });
+        return {get, set};
+    })();
+    sessionIdEl.addEventListener('change', () => paramsManager.set({sessionId: sessionIdEl.value.trim()}));
+    offsetEl.addEventListener('change', () => paramsManager.set({offset: parseInt(offsetEl.value.trim())}));
+    limitEl.addEventListener('change', () => paramsManager.set({limit: parseInt(limitEl.value.trim())}));
+    toHistoryEl.addEventListener('click', () => paramsManager.set({page: HISTORY_PAGE}));
+    toQueryEl.addEventListener('click', () => paramsManager.set({page: QUERY_PAGE}));
+    const copyManager = (() => {
+        let cancellers = [];
+        const listen = (el, getVal, copyMsg) => {
+            let cancel = null;
+            el.addEventListener('click', () => {
+                if (cancel) return;
+                navigator.clipboard.writeText(getVal());
+                const v = el.innerText;
+                el.innerText = copyMsg;
+                cancel = () => {
+                    if (!cancel) return;
+                    el.innerText = v;
+                    cancel = null;
+                };
+                setTimeout(() => cancel?.(), COPY_MSG_SHOW_MS);
+            });
+            return () => cancel?.();
+        };
+        const add = (el, getVal, copyMsg) => cancellers.push(listen(el, getVal, copyMsg));
+        const cancel = () => {
+            for (const cancel of cancellers) cancel();
+        };
+        return {add, cancel};
+    })();
+    const dataManager = (() => {
+        let _query = '';
+        let _debugQueryResp = null;
+        let _reply = '';
+        let _note = '';
+        let _debugHistoryResp = null;
+        let _history = '';
+        const get = () => ({
+            query: _query, debugQueryResp: _debugQueryResp, reply: _reply, note: _note,
+            debugHistoryResp: _debugHistoryResp, history: _history,
+        });
+        const set = ({query, debugQueryResp, reply, note, debugHistoryResp, history}) => {
+            copyManager.cancel();
+            if (query !== undefined) {
+                queryEl.value = query;
+                _query = query;
+            }
+            if (debugQueryResp !== undefined) {
+                console.log('debugQueryResp', debugQueryResp);
+                _debugQueryResp = debugQueryResp;
+            }
+            if (reply !== undefined) {
+                replyEl.value = reply;
+                _reply = reply;
+            }
+            if (note !== undefined) {
+                noteEl.innerText = note;
+                _note = note;
+            }
+            if (debugHistoryResp !== undefined) {
+                console.log('debugHistoryResp', debugHistoryResp);
+                _debugHistoryResp = debugHistoryResp;
+            }
+            if (history !== undefined) {
+                historyEl.value = history;
+                _history = history;
+            }
+        };
+        return {get, set};
+    })();
+    copyManager.add(sessionIdLabelEl, () => paramsManager.get().sessionId, COPY_SESSION_ID_MSG);
+    copyManager.add(queryLabelEl, () => dataManager.get().query, COPY_QUERY_MSG);
+    copyManager.add(replyLabelEl, () => dataManager.get().reply, COPY_REPLY_MSG);
+    copyManager.add(noteEl, () => {
+        const v = dataManager.get().debugQueryResp;
+        return !v ? '' : JSON.stringify(v, null, 2);
+    }, COPY_NOTE_MSG);
+    copyManager.add(historyLabelEl, () => dataManager.get().history, COPY_HISTORY_MSG);
+    queryEl.addEventListener('change', () => dataManager.set({query: queryEl.value}));
+    const disableManager = (() => {
+        let _disabled = {};
+        const disableOne = (el) => {
+            const {id} = el;
+            if (!(id in _disabled)) {
+                _disabled[id] = 1;
+                el.disabled = true;
+            } else _disabled[id]++;
+        };
+        const enableOne = (el) => {
+            const {id} = el;
+            if (!(id in _disabled)) return;
+            _disabled[id]--;
+            if (!_disabled[id]) {
+                delete _disabled[id];
+                el.disabled = false;
+            }
+        };
+        const disable = (els) => els.forEach(disableOne);
+        const enable = (els) => els.forEach(enableOne);
+        return {disable, enable};
+    })();
+    const onQueryResp = (debugQueryResp, reply, note) => dataManager.set({debugQueryResp, reply, note});
+    const onHistoryResp = (debugHistoryResp, history) => dataManager.set({debugHistoryResp, history});
+    submitQueryEl.addEventListener('click', async () => {
+        const {userId, sessionId} = paramsManager.get();
+        const {query} = dataManager.get();
+        disableManager.disable([sessionIdEl, queryEl, submitQueryEl]);
         const start = Date.now();
         const formattedElapsed = () => `${Math.round((Date.now() - start) / 1000)}s`;
         try {
@@ -158,9 +405,10 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({userId, sessionId, query}),
             });
+            versionManager.checkResp(resp);
             if (!resp.ok) {
                 const error = await resp.json();
-                onResp({error}, JSON.stringify(error, null, 2), `${formattedElapsed()} (failed)`);
+                onQueryResp({error}, JSON.stringify(error, null, 2), `${formattedElapsed()} (failed)`);
             } else {
                 let partialReply = '';
                 let progress = '';
@@ -171,28 +419,28 @@
                     switch (state) {
                         case 'keepalive':
                             progress += '.';
-                            onResp({data}, partialReply || progress, formattedElapsed());
+                            onQueryResp({data}, partialReply || progress, formattedElapsed());
                             return false;
                         case 'partial':
                             switch (data_.event) {
                                 case 'task':
                                     partialReply = '';
                                     progress += `\ndone – ${data_.kind}\n`
-                                    onResp({data}, progress, formattedElapsed());
+                                    onQueryResp({data}, progress, formattedElapsed());
                                     break;
                                 case 'reply':
                                     if (!data_.reply) partialReply += data_.diff || '';
                                     else partialReply = data_.reply;
-                                    onResp({data}, partialReply, formattedElapsed());
+                                    onQueryResp({data}, partialReply, formattedElapsed());
                                     break;
                             }
                             return false;
                         case 'success':
                             const {reply} = data_;
-                            onResp({data}, reply, `${reply.length} chars, ${formattedElapsed()}`);
+                            onQueryResp({data}, reply, `${reply.length} chars, ${formattedElapsed()}`);
                             return true;
                         case 'error':
-                            onResp({data}, JSON.stringify(data_, null, 2), `${formattedElapsed()} (failed)`);
+                            onQueryResp({data}, JSON.stringify(data_, null, 2), `${formattedElapsed()} (failed)`);
                             return true;
                     }
                 }
@@ -222,12 +470,49 @@
             }
         } catch (e) {
             const ex = explainError(e);
-            onResp({e: ex}, ex.error, `${formattedElapsed()} (failed)`);
+            onQueryResp({e: ex}, ex.error, `${formattedElapsed()} (failed)`);
         }
-        sessionIdBox.disabled = false;
-        queryBox.disabled = false;
-        submitButton.disabled = false;
+        disableManager.enable([sessionIdEl, queryEl, submitQueryEl]);
     });
+    submitHistoryEl.addEventListener('click', async () => {
+        const {userId, sessionId, offset, limit} = paramsManager.get();
+        disableManager.disable([sessionIdEl, offsetEl, limitEl, submitHistoryEl]);
+        try {
+            const resp = await fetch('/api/history', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({userId, sessionId, offset, limit}),
+            });
+            versionManager.checkResp(resp);
+            if (!resp.ok) {
+                const error = await resp.json();
+                onHistoryResp({error}, JSON.stringify(error, null, 2));
+            } else {
+                const data = await resp.json();
+                let history = '';
+                for (const [i, {query, reply}] of data.history.reverse().entries()) {
+                    const n = -(offset + i);
+                    history += `\n=== Query ${n} ===\n\n${query}\n\n=== Reply ${n} ===\n\n${reply}\n\n`;
+                }
+                onHistoryResp({data}, history);
+            }
+        } catch (e) {
+            const ex = explainError(e);
+            onHistoryResp({e: ex}, ex.error);
+        }
+        disableManager.enable([sessionIdEl, offsetEl, limitEl, submitHistoryEl]);
+    });
+    const versionManager = (() => {
+        let _version = versionEl.innerText;
+        const check = (version) => {
+            if (version !== _version) {
+                console.log(`version mismatch: ${version} !== ${_version}`);
+                versionEl.innerText = `${_version} (outdated)`;
+            }
+        };
+        const checkResp = (resp) => check(resp.headers.get('X-App-Version') || '');
+        return {checkResp};
+    })();
     const explainError = (e) => ({error: `${e.name || ''}: ${e.message || ''}`, stack: e.stack || ''});
 </script>
 </body>
