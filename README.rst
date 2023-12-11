@@ -57,7 +57,7 @@ Engineering
 - Security by manually added user IDs and secret key.
 - Consolidation, introspection by HTTP requests keeping Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
-- Frontend of query and history pages; VanillaJS.
+- Frontend, VanillaJS.
 
 
 Local run
