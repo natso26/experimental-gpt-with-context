@@ -67,6 +67,10 @@
             font-size: var(--font-size-m);
         }
 
+        .text-box-small-font-override {
+            font-size: var(--font-size-s);
+        }
+
         .text-box-full-height-override {
             height: var(--text-box-full-height);
         }
@@ -127,12 +131,26 @@
     <div><textarea class="text-box" id="query" rows="4"></textarea></div>
     <div class="buttons-panel">
         <button class="button" id="submit-query">Submit</button>
-        <button class="button button-secondary-override" id="to-history">History</button>
+        <button class="button button-secondary-override" id="to-details">Details</button>
     </div>
     <br><br>
     <label for="reply" id="reply-label">Reply</label>
     <div><textarea class="text-box" disabled id="reply" rows="16"></textarea></div>
     <div class="footnote"><span id="version">{{ VERSION }}</span><span id="note"></span></div>
+</div>
+<div class="_flex-grow _flex-column _hidden" id="_part-details">
+    <div class="buttons-panel">
+        <div>
+            <label for="item" id="item-label">Item</label>
+            <input class="number-input" id="item" min="0" step="1" type="number">
+            <button class="button" id="submit-details">Submit</button>
+        </div>
+        <button class="button button-secondary-override" id="to-history">History</button>
+    </div>
+    <br><br>
+    <label for="details" id="details-label">Details</label>
+    <div class="_flex-grow"><textarea class="text-box text-box-small-font-override text-box-full-height-override"
+                                      disabled id="details"></textarea></div>
 </div>
 <div class="_flex-grow _flex-column _hidden" id="_part-history">
     <div class="buttons-panel">
@@ -153,8 +171,10 @@
 
 <script>
     const QUERY_PATHNAME = '/';
+    const DETAILS_PATHNAME = '/details';
     const HISTORY_PATHNAME = '/history';
     const QUERY_PAGE = 'query';
+    const DETAILS_PAGE = 'details';
     const HISTORY_PAGE = 'history';
     const DEFAULT_HISTORY_LIMIT = 25;
     const COPY_MSG_SHOW_MS = 750;
@@ -162,6 +182,7 @@
     const COPY_QUERY_MSG = '(query copied)';
     const COPY_REPLY_MSG = '(reply copied)';
     const COPY_NOTE_MSG = '(response copied)'; // NB: clicking note copies response
+    const COPY_DETAILS_MSG = '(details copied)';
     const COPY_HISTORY_MSG = '(history copied)';
     const pageEl = document.getElementById('_page');
     const sessionIdLabelEl = document.getElementById('session-id-label');
@@ -170,11 +191,17 @@
     const queryLabelEl = document.getElementById('query-label');
     const queryEl = document.getElementById('query');
     const submitQueryEl = document.getElementById('submit-query');
-    const toHistoryEl = document.getElementById('to-history');
+    const toDetailsEl = document.getElementById('to-details');
     const replyLabelEl = document.getElementById('reply-label');
     const replyEl = document.getElementById('reply');
     const versionEl = document.getElementById('version');
     const noteEl = document.getElementById('note');
+    const partDetailsEl = document.getElementById('_part-details');
+    const itemEl = document.getElementById('item');
+    const toHistoryEl = document.getElementById('to-history');
+    const submitDetailsEl = document.getElementById('submit-details');
+    const detailsLabelEl = document.getElementById('details-label');
+    const detailsEl = document.getElementById('details');
     const partHistoryEl = document.getElementById('_part-history');
     const offsetEl = document.getElementById('offset');
     const limitEl = document.getElementById('limit');
@@ -192,6 +219,7 @@
                     let success = false;
                     switch (page) {
                         case QUERY_PAGE:
+                            partDetailsEl.classList.add('_hidden');
                             partHistoryEl.classList.add('_hidden');
                             partQueryEl.classList.remove('_hidden');
                             document.title = 'Inventio';
@@ -199,10 +227,16 @@
                             break;
                         case HISTORY_PAGE:
                             partQueryEl.classList.add('_hidden');
+                            partDetailsEl.classList.add('_hidden');
                             partHistoryEl.classList.remove('_hidden');
                             document.title = 'Inventio – History';
                             success = true;
                             break;
+                        case DETAILS_PAGE:
+                            partHistoryEl.classList.add('_hidden');
+                            partQueryEl.classList.add('_hidden');
+                            partDetailsEl.classList.remove('_hidden');
+                            document.title = 'Inventio – Details';
                     }
                     if (success) {
                         pageEl.innerText = page;
@@ -210,7 +244,7 @@
                     }
                 }
             };
-            set({page: pageEl.innerText === HISTORY_PAGE ? HISTORY_PAGE : QUERY_PAGE});
+            set({page: pageEl.innerText});
             return {get, set};
         })();
         const urlManager = (() => {
@@ -231,34 +265,38 @@
         })();
         let _userId = '';
         let _sessionId = '';
+        let _item = null;
         let _offset = null;
         let _limit = null;
         const get = () => ({
             ...pageManager.get(),
-            userId: _userId, sessionId: _sessionId, offset: _offset, limit: _limit,
+            userId: _userId, sessionId: _sessionId, item: _item, offset: _offset, limit: _limit,
         });
-        const set = ({page, userId, sessionId, offset, limit}) => {
+        const set = ({page, userId, sessionId, item, offset, limit}) => {
             if (page === undefined) {
                 const {page: page_} = pageManager.get();
                 page = page_;
             }
             if (userId === undefined) userId = _userId;
             if (sessionId === undefined) sessionId = _sessionId;
+            if (item === undefined || Number.isNaN(item)) item = _item;
             if (offset === undefined || Number.isNaN(offset)) offset = _offset;
             if (limit === undefined || Number.isNaN(limit)) limit = _limit;
             pageManager.set({page});
             const {url} = urlManager.get();
             const p = new URLSearchParams();
+            if (userId) p.set('userId', userId);
+            if (sessionId) p.set('sessionId', sessionId);
             switch (page) {
                 case QUERY_PAGE:
                     url.pathname = QUERY_PATHNAME;
-                    if (userId) p.set('userId', userId);
-                    if (sessionId) p.set('sessionId', sessionId);
+                    break;
+                case DETAILS_PAGE:
+                    url.pathname = DETAILS_PATHNAME;
+                    if (item !== 0) p.set('item', `${item}`);
                     break;
                 case HISTORY_PAGE:
                     url.pathname = HISTORY_PATHNAME;
-                    if (userId) p.set('userId', userId);
-                    if (sessionId) p.set('sessionId', sessionId);
                     if (offset !== 0) p.set('offset', `${offset}`);
                     if (limit !== DEFAULT_HISTORY_LIMIT) p.set('limit', `${limit}`);
                     break;
@@ -270,6 +308,10 @@
             if (sessionId !== _sessionId) {
                 sessionIdEl.value = sessionId;
                 _sessionId = sessionId;
+            }
+            if (item !== _item) {
+                itemEl.value = item;
+                _item = item;
             }
             if (offset !== _offset) {
                 offsetEl.value = offset;
@@ -287,13 +329,16 @@
         });
         set({
             userId: p.get('userId') || '', sessionId: p.get('sessionId') || uuidv4(),
+            item: parseInt(p.get('item')) || 0,
             offset: parseInt(p.get('offset')) || 0, limit: parseInt(p.get('limit')) || DEFAULT_HISTORY_LIMIT,
         });
         return {get, set};
     })();
     sessionIdEl.addEventListener('change', () => paramsManager.set({sessionId: sessionIdEl.value.trim()}));
+    itemEl.addEventListener('change', () => paramsManager.set({item: parseInt(itemEl.value.trim())}));
     offsetEl.addEventListener('change', () => paramsManager.set({offset: parseInt(offsetEl.value.trim())}));
     limitEl.addEventListener('change', () => paramsManager.set({limit: parseInt(limitEl.value.trim())}));
+    toDetailsEl.addEventListener('click', () => paramsManager.set({page: DETAILS_PAGE}));
     toHistoryEl.addEventListener('click', () => paramsManager.set({page: HISTORY_PAGE}));
     toQueryEl.addEventListener('click', () => paramsManager.set({page: QUERY_PAGE}));
     const copyManager = (() => {
@@ -325,13 +370,16 @@
         let _debugQueryResp = null;
         let _reply = '';
         let _note = '';
+        let _debugDetailsResp = null;
+        let _details = '';
         let _debugHistoryResp = null;
         let _history = '';
         const get = () => ({
             query: _query, debugQueryResp: _debugQueryResp, reply: _reply, note: _note,
+            debugDetailsResp: _debugDetailsResp, details: _details,
             debugHistoryResp: _debugHistoryResp, history: _history,
         });
-        const set = ({query, debugQueryResp, reply, note, debugHistoryResp, history}) => {
+        const set = ({query, debugQueryResp, reply, note, debugDetailsResp, details, debugHistoryResp, history}) => {
             copyManager.cancel();
             if (query !== undefined) {
                 queryEl.value = query;
@@ -348,6 +396,14 @@
             if (note !== undefined) {
                 noteEl.innerText = note;
                 _note = note;
+            }
+            if (debugDetailsResp !== undefined) {
+                console.log('debugDetailsResp', debugDetailsResp);
+                _debugDetailsResp = debugDetailsResp;
+            }
+            if (details !== undefined) {
+                detailsEl.value = details;
+                _details = details;
             }
             if (debugHistoryResp !== undefined) {
                 console.log('debugHistoryResp', debugHistoryResp);
@@ -367,6 +423,7 @@
         const v = dataManager.get().debugQueryResp;
         return !v ? '' : JSON.stringify(v, null, 2);
     }, COPY_NOTE_MSG);
+    copyManager.add(detailsLabelEl, () => dataManager.get().details, COPY_DETAILS_MSG);
     copyManager.add(historyLabelEl, () => dataManager.get().history, COPY_HISTORY_MSG);
     queryEl.addEventListener('change', () => dataManager.set({query: queryEl.value}));
     const disableManager = (() => {
@@ -392,6 +449,7 @@
         return {disable, enable};
     })();
     const onQueryResp = (debugQueryResp, reply, note) => dataManager.set({debugQueryResp, reply, note});
+    const onDetailsResp = (debugDetailsResp, details) => dataManager.set({debugDetailsResp, details});
     const onHistoryResp = (debugHistoryResp, history) => dataManager.set({debugHistoryResp, history});
     submitQueryEl.addEventListener('click', async () => {
         const {userId, sessionId} = paramsManager.get();
@@ -407,8 +465,8 @@
             });
             versionManager.checkResp(resp);
             if (!resp.ok) {
-                const error = await resp.json();
-                onQueryResp({error}, JSON.stringify(error, null, 2), `${formattedElapsed()} (failed)`);
+                const error = await parseRespBody(resp);
+                onQueryResp({error}, stringify(error), `${formattedElapsed()} (failed)`);
             } else {
                 let partialReply = '';
                 let progress = '';
@@ -474,6 +532,29 @@
         }
         disableManager.enable([sessionIdEl, queryEl, submitQueryEl]);
     });
+    submitDetailsEl.addEventListener('click', async () => {
+        const {userId, sessionId, item} = paramsManager.get();
+        disableManager.disable([sessionIdEl, itemEl, submitDetailsEl]);
+        try {
+            const resp = await fetch('/api/details', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({userId, sessionId, item}),
+            });
+            versionManager.checkResp(resp);
+            if (!resp.ok) {
+                const error = await parseRespBody(resp);
+                onDetailsResp({error}, stringify(error));
+            } else {
+                const data = await resp.json();
+                onDetailsResp({data}, data.overviewYaml);
+            }
+        } catch (e) {
+            const ex = explainError(e);
+            onDetailsResp({e: ex}, ex.error);
+        }
+        disableManager.enable([sessionIdEl, itemEl, submitDetailsEl]);
+    });
     submitHistoryEl.addEventListener('click', async () => {
         const {userId, sessionId, offset, limit} = paramsManager.get();
         disableManager.disable([sessionIdEl, offsetEl, limitEl, submitHistoryEl]);
@@ -485,8 +566,8 @@
             });
             versionManager.checkResp(resp);
             if (!resp.ok) {
-                const error = await resp.json();
-                onHistoryResp({error}, JSON.stringify(error, null, 2));
+                const error = await parseRespBody(resp);
+                onHistoryResp({error}, stringify(error));
             } else {
                 const data = await resp.json();
                 let history = '';
@@ -513,6 +594,14 @@
         const checkResp = (resp) => check(resp.headers.get('X-App-Version') || '');
         return {checkResp};
     })();
+    const parseRespBody = (resp) => resp.text().then((s) => {
+        try {
+            return JSON.parse(s);
+        } catch (_) {
+            return s;
+        }
+    });
+    const stringify = (v) => typeof v === 'string' ? v : JSON.stringify(v, null, 2);
     const explainError = (e) => ({error: `${e.name || ''}: ${e.message || ''}`, stack: e.stack || ''});
 </script>
 </body>

@@ -96,6 +96,26 @@ const getActions = wrapper.logCorrelationId('repository.db.memory.getActions', a
     return data.map(({[ELT_FIELD]: elt}) => elt).reverse();
 });
 
+const getPinpoint = wrapper.logCorrelationId('repository.db.memory.getPinpoint', async (correlationId, docId, condition) => {
+    const {type, offset, index} = condition;
+    let snapshot;
+    switch (type) {
+        case 'elt':
+            snapshot = await coll.doc(docId).collection(ELT_COLLECTION)
+                .where(IS_INTERNAL_FIELD, '!=', true).orderBy(IS_INTERNAL_FIELD)
+                .orderBy(INDEX_FIELD, 'desc').offset(offset).limit(1).get();
+            break;
+        case 'action':
+            snapshot = await coll.doc(docId).collection(ACTION_COLLECTION)
+                .where(INDEX_FIELD, '==', index).orderBy(INDEX_FIELD).limit(1).get();
+            break;
+    }
+    if (!snapshot || snapshot.empty) {
+        return null;
+    }
+    return snapshot.docs[0].data();
+});
+
 const shortTermSearch = wrapper.logCorrelationId('repository.db.memory.shortTermSearch', async (correlationId, docId, maximizingObjective, numResults) => {
     const snapshot = await coll.doc(docId).collection(ELT_COLLECTION)
         .select(INDEX_FIELD, TIMESTAMP_FIELD, ELT_FIELD).orderBy(INDEX_FIELD, 'desc').limit(SHORT_TERM_SEARCH_LOOKBACK_LIMIT).get();
@@ -224,6 +244,7 @@ export default {
     getLatest,
     getHistory,
     getActions,
+    getPinpoint,
     shortTermSearch,
     longTermSearch,
     consolidate,

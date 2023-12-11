@@ -260,7 +260,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             }
             const actiobDbExtra = {
                 correlationId,
-                data,
+                ...data,
             };
             const {index, timestamp} = await memory.addAction(correlationId, docId, actionLvl, {
                 [common.KIND_FIELD]: kind,
