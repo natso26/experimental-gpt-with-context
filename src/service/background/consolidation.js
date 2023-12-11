@@ -19,9 +19,9 @@ const TOKEN_COUNT_LIMIT = strictParse.int(process.env.CONSOLIDATION_TOKEN_COUNT_
 
 const consolidate = wrapper.logCorrelationId('service.background.consolidation.consolidate', async (correlationId, userId, sessionId) => {
     log.log('consolidate: parameters', {correlationId, userId, sessionId});
-    const warnings = common.warnings();
     const docId = common.DOC_ID.from(userId, sessionId);
     const rawConsolidationRes = await memory.consolidate(correlationId, docId, async (lvl, raw) => {
+        const warnings = common.warnings();
         const timer = time.timer();
         // NB: {text: summary} > {summary}
         const context = lvl ? raw.map((
@@ -72,6 +72,7 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
             passOnRet: {
                 summary,
                 ...extra,
+                warnings: warnings.get(),
             },
         };
     });
@@ -79,7 +80,6 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
         ({lvl, index, timestamp, passOnRet}) => ({lvl, index, timestamp, ...passOnRet}));
     return {
         consolidationRes,
-        warnings: warnings.get(),
     };
 });
 

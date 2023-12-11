@@ -1,6 +1,6 @@
 const int = (s) => {
     const v = parseInt(s);
-    if (isNaN(v)) {
+    if (Number.isNaN(v)) {
         throw new Error(`invalid integer: ${s}`);
     }
     return v;
@@ -8,7 +8,7 @@ const int = (s) => {
 
 const float = (s) => {
     const v = parseFloat(s);
-    if (isNaN(v)) {
+    if (Number.isNaN(v)) {
         throw new Error(`invalid float: ${s}`);
     }
     return v;
