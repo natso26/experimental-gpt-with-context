@@ -117,6 +117,7 @@ const pingInternalHandler = async (req, res) => {
 };
 
 const app = express();
+app.use('/favicon.ico', express.static('./public/favicon.ico'));
 app.use(versionMiddleware);
 app.use(common.API_ROUTE_PREFIX, correlationIdMiddleware, express.json());
 app.use(common.INTERNAL_ROUTE_PREFIX, internalApiAuthMiddleware, correlationIdMiddleware, express.json());
