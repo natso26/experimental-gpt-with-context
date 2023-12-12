@@ -34,9 +34,14 @@
             -webkit-text-size-adjust: 100%;
         }
 
+        ._full-width {
+            width: 100%;
+        }
+
         ._flex-column {
             display: flex;
             flex-direction: column;
+            align-items: start;
         }
 
         ._flex-grow {
@@ -128,14 +133,14 @@
 <div class="_flex-grow _flex-column _hidden" id="_part-query">
     <br>
     <label for="query" id="query-label">Query</label>
-    <div><textarea class="text-box" id="query" rows="4"></textarea></div>
+    <div class="_full-width"><textarea class="text-box" id="query" rows="4"></textarea></div>
     <div class="buttons-panel">
         <button class="button" id="submit-query">Submit</button>
         <button class="button button-secondary-override" id="to-details">Details</button>
     </div>
     <br><br>
     <label for="reply" id="reply-label">Reply</label>
-    <div><textarea class="text-box" disabled id="reply" rows="16"></textarea></div>
+    <div class="_full-width"><textarea class="text-box" disabled id="reply" rows="16"></textarea></div>
     <div class="footnote"><span id="version">{{ VERSION }}</span><span id="note"></span></div>
 </div>
 <div class="_flex-grow _flex-column _hidden" id="_part-details">
@@ -149,8 +154,9 @@
     </div>
     <br><br>
     <label for="details" id="details-label">Details</label>
-    <div class="_flex-grow"><textarea class="text-box text-box-small-font-override text-box-full-height-override"
-                                      disabled id="details"></textarea></div>
+    <div class="_full-width _flex-grow">
+        <textarea class="text-box text-box-small-font-override text-box-full-height-override"
+                  disabled id="details"></textarea></div>
 </div>
 <div class="_flex-grow _flex-column _hidden" id="_part-history">
     <div class="buttons-panel">
@@ -165,8 +171,8 @@
     </div>
     <br><br>
     <label for="history" id="history-label">History</label>
-    <div class="_flex-grow"><textarea class="text-box text-box-full-height-override" disabled id="history"></textarea>
-    </div>
+    <div class="_full-width _flex-grow">
+        <textarea class="text-box text-box-full-height-override" disabled id="history"></textarea></div>
 </div>
 
 <script>
