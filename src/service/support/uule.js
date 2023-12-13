@@ -28,7 +28,7 @@ const getCanonicalName = (() => {
         f(correlationId, number.round(lat, 5), number.round(lon, 5), warnings);
 })();
 
-// cover 1 degree radius by 9 cells of half-degree grid
+// cover 1 degree diameter by 9 cells of half-degree grid
 const getLocationsCallback = wrapper.logCorrelationId('service.support.uule.getLocationsCallback', async (correlationId, locations) => {
     const grid = {};
     for (const loc_ of locations) {
@@ -68,7 +68,7 @@ const distSq = (x0, y0, x1, y1) => {
     const dy = y1 - y0;
     return dx * dx + dy * dy;
 };
-const scoreFn = (dSq, reach) => dSq > 1 ? 0 : (reach + 1) / (dSq || 1e-10);
+const scoreFn = (dSq, reach) => dSq > .5 ? 0 : (reach + 1) / (dSq || 1e-10);
 
 export default {
     getCanonicalName,
