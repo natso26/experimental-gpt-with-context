@@ -39,6 +39,7 @@ const MODEL_PROMPT_FORMATTED_TIME = (timezoneOffset) =>
 const MODEL_PROMPT_OPTIONS_PART = ({timezoneOffset, location}) =>
     `${(!timezoneOffset && timezoneOffset !== 0) ? 'time' : 'local time'}: ${MODEL_PROMPT_FORMATTED_TIME(timezoneOffset)}`
     + (!location ? '' : `\nuser location: ${location}`);
+const EMPTY_PROMPT_OPTIONS = () => ({timezoneOffset: null, location: ''});
 const EMBED_RETRY_COUNT = strictParse.int(process.env.EMBED_REPOSITORY_RETRY_COUNT);
 const CHAT_RETRY_COUNT = strictParse.int(process.env.CHAT_REPOSITORY_RETRY_COUNT);
 const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_REPOSITORY_RETRY_COUNT);
@@ -177,6 +178,7 @@ export default {
     MODEL_PROMPT_EXTERNAL_COMPONENT_MSG,
     MODEL_PROMPT_INTERNAL_COMPONENT_MSG,
     MODEL_PROMPT_OPTIONS_PART,
+    EMPTY_PROMPT_OPTIONS,
     CHAT_COST,
     absCosineSimilarity,
     embedWithRetry,

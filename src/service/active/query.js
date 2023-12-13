@@ -103,6 +103,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         return baseUrl;
     }).catch((_) => '');
     const ipGeolocateTask = commonActive.ipGeolocate(correlationId, options, 'query');
+    const uuleCanonicalNameTask = commonActive.uuleCanonicalName(correlationId, ipGeolocateTask, warnings, 'query');
     const promptOptionsTask = commonActive.promptOptions(correlationId, options, ipGeolocateTask, warnings, 'query');
     const docId = common.DOC_ID.from(userId, sessionId);
     const actionLvl = !recursedQuery ? 0 : 1;
@@ -126,7 +127,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             if (!recursedQuery) {
                 return {search: '', searchTokenCount: 0};
             }
-            return await getSearch(correlationId, docId, recursedQuery, warnings);
+            return await getSearch(correlationId, docId, recursedQuery, uuleCanonicalNameTask, warnings);
         })(),
         getActionHistory(correlationId, docId, actionLvl),
         (async () => {
@@ -312,6 +313,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     }
     const extra = {
         correlationId,
+        options: {options, promptOptions},
         info,
         search,
         actionHistory,
@@ -422,11 +424,12 @@ const getInfo = async (correlationId, docId, options, recursedQuery, warnings) =
     return {info, infoTokenCount};
 };
 
-const getSearch = async (correlationId, docId, recursedQuery, warnings) => {
+const getSearch = async (correlationId, docId, recursedQuery, uuleCanonicalNameTask, warnings) => {
     let search = '';
     let searchTokenCount = 0;
     try {
-        const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQuery);
+        const uuleCanonicalName = await uuleCanonicalNameTask;
+        const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQuery, uuleCanonicalName || null);
         if (rawSearch) {
             const {truncated, tokenCount} = await tokenizer.truncate(
                 correlationId, JSON.stringify(rawSearch), SEARCH_TRUNCATION_TOKEN_COUNT);

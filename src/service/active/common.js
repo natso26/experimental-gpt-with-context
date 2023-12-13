@@ -1,4 +1,6 @@
+import uule from '../support/uule.js';
 import ipaddr from '../../repository/web/ipaddr.js';
+import common from '../common.js';
 import log from '../../util/log.js';
 
 const ipGeolocate = (correlationId, options, logMsgPrefix) => ipaddr.geolocate(correlationId, options.ip).then(
@@ -7,6 +9,16 @@ const ipGeolocate = (correlationId, options, logMsgPrefix) => ipaddr.geolocate(c
         log.log(`${logMsgPrefix}: ip geolocation`, {correlationId, ip: options.ip, ...o});
         return o;
     }).catch((_) => ({}));
+
+const uuleCanonicalName = (correlationId, ipGeolocateTask, warnings, logMsgPrefix) => ipGeolocateTask.then(
+    async ({lat, lon}) => {
+        if (!lat || !lon) {
+            return '';
+        }
+        const canonicalName = await uule.getCanonicalName(correlationId, lat, lon, warnings);
+        log.log(`${logMsgPrefix}: uule canonical name`, {correlationId, canonicalName});
+        return canonicalName;
+    }).catch((_) => '');
 
 const promptOptions = (correlationId, options, ipGeolocateTask, warnings, logMsgPrefix) => ipGeolocateTask.then(
     ({district, city, regionName, country, offset}) => {
@@ -22,9 +34,10 @@ const promptOptions = (correlationId, options, ipGeolocateTask, warnings, logMsg
         const o = {timezoneOffset, location};
         log.log(`${logMsgPrefix}: prompt options`, {correlationId, ...o});
         return o;
-    });
+    }).catch((_) => common.EMPTY_PROMPT_OPTIONS());
 
 export default {
     ipGeolocate,
+    uuleCanonicalName,
     promptOptions,
 };
