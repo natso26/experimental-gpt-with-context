@@ -312,6 +312,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     }
     const extra = {
         correlationId,
+        options: {options, promptOptions},
         info,
         search,
         actionHistory,

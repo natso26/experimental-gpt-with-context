@@ -56,6 +56,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         return {
             state: 'no-urls',
             reply: null,
+            options: {options},
             timeStats: {
                 elapsed: timer.elapsed(),
             },
@@ -135,6 +136,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         return {
             state: 'no-answers',
             reply: null,
+            options: {options, promptOptions},
             timeStats: {
                 elapsed: timer.elapsed(),
             },
@@ -154,6 +156,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     return {
         state: 'success',
         reply: conclusion,
+        options: {options, promptOptions},
         actions: answers,
         tokenCounts: {
             recursedNote: recursedNoteTokenCount,

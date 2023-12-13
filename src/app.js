@@ -58,9 +58,6 @@ const correlationIdMiddleware = (req, res, next) => {
 };
 
 const ipMiddleware = (req, res, next) => {
-    console.log(req.headers['x-forwarded-for']);
-    console.log(req.socket.remoteAddress);
-    console.log(req.ip);
     const ip = _OVERRIDE_IP || req.ip;
     log.log(`request ip: ${ip}`, {correlationId: req.correlationId, ip});
     req.body.ip = ip;
