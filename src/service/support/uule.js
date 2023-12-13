@@ -7,7 +7,7 @@ import wrapper from '../../util/wrapper.js';
 
 const canonicalNameCache = cache.lruTtl(100, 30 * 60 * 1000);
 let locationGrid = {};
-setTimeout(() => serp.getLocations(uuid.v4(), getLocationsCallback), 0);
+setTimeout(() => serp.getLocations(uuid.v4(), getLocationsCallback).catch((_) => ''), 0);
 
 const getCanonicalName = (() => {
     const f = wrapper.cache(canonicalNameCache, (correlationId, lat, lon, warnings) => `${lat},${lon}`,
@@ -28,6 +28,7 @@ const getCanonicalName = (() => {
         f(correlationId, number.round(lat, 5), number.round(lon, 5), warnings);
 })();
 
+// cover 1 degree radius by 9 cells of half-degree grid
 const getLocationsCallback = wrapper.logCorrelationId('service.support.uule.getLocationsCallback', async (correlationId, locations) => {
     const grid = {};
     for (const loc_ of locations) {

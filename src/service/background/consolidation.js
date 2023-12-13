@@ -12,7 +12,7 @@ const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
     common.MODEL_PROMPT_CORE_MSG
     + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
-    + `\n${common.MODEL_PROMPT_OPTIONS_PART({timezoneOffset: null, location: ''})}`
+    + `\n${common.MODEL_PROMPT_OPTIONS_PART(common.EMPTY_PROMPT_OPTIONS())}`
     + `\ncontext: ${JSON.stringify(context)}`
     + `\nconsolidate`;
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.CONSOLIDATION_TOKEN_COUNT_LIMIT);
