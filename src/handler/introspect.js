@@ -6,7 +6,7 @@ const internalIntrospect = wrapper.logCorrelationId('handler.introspect.internal
     const {userId, sessionId, index} = body;
     if (!common.isUuidV4(userId)
         || !common.isUuidV4(sessionId)
-        || !(common.isInteger(index) && index >= 0)) {
+        || (!common.isInteger(index) || !(index >= 0))) {
         throw new Error('some fields are invalid');
     }
     return await introspection.introspect(correlationId, userId, sessionId, index);

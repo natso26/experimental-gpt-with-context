@@ -9,7 +9,7 @@ const MODEL_PROMPT_TEXT_FIELD = 'text';
 const MODEL_PROMPT = (context) =>
     common.MODEL_PROMPT_CORE_MSG
     + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
-    + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
+    + `\n${common.MODEL_PROMPT_OPTIONS_PART(common.EMPTY_PROMPT_OPTIONS())}`
     + `\ncontext: ${JSON.stringify(context)}`
     + `\nshort story`;
 const CONTEXT_SCORE = (rand, sim) => {

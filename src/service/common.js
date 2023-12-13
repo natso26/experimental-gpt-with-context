@@ -7,6 +7,8 @@ import scraper from '../repository/web/scraper.js';
 import number from '../util/number.js';
 import strictParse from '../util/strictParse.js';
 import log from '../util/log.js';
+import wrapper from '../util/wrapper.js';
+import time from '../util/time.js';
 import error from '../util/error.js';
 
 const DOC_ID = {
@@ -32,7 +34,12 @@ const IMAGINATION_EMBEDDING_FIELD = 'imaginationEmbedding';
 const MODEL_PROMPT_CORE_MSG = 'Be authentic.';
 const MODEL_PROMPT_EXTERNAL_COMPONENT_MSG = 'This is an external component.';
 const MODEL_PROMPT_INTERNAL_COMPONENT_MSG = 'This is an internal component.';
-const MODEL_PROMPT_FORMATTED_TIME = () => new Date().toISOString();
+const MODEL_PROMPT_FORMATTED_TIME = (timezoneOffset) =>
+    (!timezoneOffset && timezoneOffset !== 0) ? new Date().toISOString() : time.toISOStringWithOffset(new Date(), timezoneOffset);
+const MODEL_PROMPT_OPTIONS_PART = ({timezoneOffset, location}) =>
+    `${(!timezoneOffset && timezoneOffset !== 0) ? 'time' : 'local time'}: ${MODEL_PROMPT_FORMATTED_TIME(timezoneOffset)}`
+    + (!location ? '' : `\nuser location: ${location}`);
+const EMPTY_PROMPT_OPTIONS = () => ({timezoneOffset: null, location: ''});
 const EMBED_RETRY_COUNT = strictParse.int(process.env.EMBED_REPOSITORY_RETRY_COUNT);
 const CHAT_RETRY_COUNT = strictParse.int(process.env.CHAT_REPOSITORY_RETRY_COUNT);
 const WOLFRAM_ALPHA_QUERY_RETRY_COUNT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_REPOSITORY_RETRY_COUNT);
@@ -53,45 +60,30 @@ const absCosineSimilarity = (a, b) => {
     return Math.abs(sim);
 };
 
-const retry = (fn, onError) => async (...args) => {
-    let cnt = 0;
-    while (true) {
-        try {
-            return await fn(...args);
-        } catch (e) {
-            const isContinue = onError(e, cnt);
-            if (!isContinue) {
-                throw e;
-            }
-            cnt++;
-        }
-    }
-};
-
-const embedWithRetry = retry(embedding.embed, (e, cnt) => {
-    log.log(`embed repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
+const embedWithRetry = wrapper.retry((e, cnt, correlationId) => {
+    log.log(`embed repository failed, retry count: ${cnt}`, {correlationId, cnt, ...error.explain(e)});
     return cnt < EMBED_RETRY_COUNT;
-});
+}, embedding.embed);
 
-const chatWithRetry = retry(chat.chat, (e, cnt) => {
-    log.log(`chat repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
+const chatWithRetry = wrapper.retry((e, cnt, correlationId) => {
+    log.log(`chat repository failed, retry count: ${cnt}`, {correlationId, cnt, ...error.explain(e)});
     return cnt < CHAT_RETRY_COUNT;
-});
+}, chat.chat);
 
-const wolframAlphaQueryWithRetry = retry(wolframAlpha.query, (e, cnt) => {
-    log.log(`wolfram alpha query repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
+const wolframAlphaQueryWithRetry = wrapper.retry((e, cnt, correlationId) => {
+    log.log(`wolfram alpha query repository failed, retry count: ${cnt}`, {correlationId, cnt, ...error.explain(e)});
     return cnt < WOLFRAM_ALPHA_QUERY_RETRY_COUNT;
-});
+}, wolframAlpha.query);
 
-const serpSearchWithRetry = retry(serp.search, (e, cnt) => {
-    log.log(`serp search repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
+const serpSearchWithRetry = wrapper.retry((e, cnt, correlationId) => {
+    log.log(`serp search repository failed, retry count: ${cnt}`, {correlationId, cnt, ...error.explain(e)});
     return cnt < SERP_SEARCH_RETRY_COUNT;
-});
+}, serp.search);
 
-const scraperExtractWithRetry = retry(scraper.extract, (e, cnt) => {
-    log.log(`scraper extract repository failed, retry count: ${cnt}`, {cnt, ...error.explain(e)});
+const scraperExtractWithRetry = wrapper.retry((e, cnt, correlationId) => {
+    log.log(`scraper extract repository failed, retry count: ${cnt}`, {correlationId, cnt, ...error.explain(e)});
     return cnt < SCRAPER_EXTRACT_RETRY_COUNT;
-});
+}, scraper.extract);
 
 const shortCircuitAutocompleteContentHook = (correlationId, prefixTokenCount) => {
     const m = mapDropConflict();
@@ -185,7 +177,8 @@ export default {
     MODEL_PROMPT_CORE_MSG,
     MODEL_PROMPT_EXTERNAL_COMPONENT_MSG,
     MODEL_PROMPT_INTERNAL_COMPONENT_MSG,
-    MODEL_PROMPT_FORMATTED_TIME,
+    MODEL_PROMPT_OPTIONS_PART,
+    EMPTY_PROMPT_OPTIONS,
     CHAT_COST,
     absCosineSimilarity,
     embedWithRetry,

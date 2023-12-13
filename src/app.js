@@ -23,6 +23,10 @@ const PAGES = {
     history: 'history',
 };
 const VERSION = process.env.VERSION;
+const _OVERRIDE_IP = process.env.OVERRIDE_IP;
+(process.env.ENV === 'local' || !_OVERRIDE_IP) || (() => {
+    throw new Error('OVERRIDE_IP not correctly set');
+})();
 const SSE_KEEPALIVE_INTERVAL = strictParse.int(process.env.APP_SSE_KEEPALIVE_INTERVAL_SECS) * 1000;
 const RENDER_INDEX_HTML = wrapper.cache(
     cache.lruTtl(10, 90000), ({page, version}) => `${version}-${page}`, async ({page, version}) => {
@@ -50,6 +54,13 @@ const correlationIdMiddleware = (req, res, next) => {
     const v = req.headers[common.CORRELATION_ID_HEADER.toLowerCase()] || uuid.v4();
     req.correlationId = v;
     res.setHeader(common.CORRELATION_ID_HEADER, v);
+    next();
+};
+
+const ipMiddleware = (req, res, next) => {
+    const ip = _OVERRIDE_IP || req.ip;
+    log.log(`request ip: ${ip}`, {correlationId: req.correlationId, ip});
+    req.body.ip = ip;
     next();
 };
 
@@ -117,6 +128,7 @@ const pingInternalHandler = async (req, res) => {
 };
 
 const app = express();
+app.set('trust proxy', true);
 app.use('/favicon.ico', express.static('./public/favicon.ico'));
 app.use(versionMiddleware);
 app.use(common.API_ROUTE_PREFIX, correlationIdMiddleware, express.json());
@@ -124,7 +136,7 @@ app.use(common.INTERNAL_ROUTE_PREFIX, internalApiAuthMiddleware, correlationIdMi
 app.get(common.INDEX_ROUTE, indexHandler);
 app.get(common.DETAILS_ROUTE, detailsHandler);
 app.get(common.HISTORY_ROUTE, historyHandler);
-app.post(common.QUERY_API_ROUTE, wrapHandlerSse(common.QUERY_API_ROUTE, query.externalQuery));
+app.post(common.QUERY_API_ROUTE, ipMiddleware, wrapHandlerSse(common.QUERY_API_ROUTE, query.externalQuery));
 app.post(common.DETAILS_API_ROUTE, wrapHandler(common.DETAILS_API_ROUTE, details.externalDetails));
 app.post(common.HISTORY_API_ROUTE, wrapHandler(common.HISTORY_API_ROUTE, history.externalHistory));
 app.get(common.PING_INTERNAL_ROUTE, pingInternalHandler);

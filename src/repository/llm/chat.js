@@ -55,12 +55,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         }),
     }, TIMEOUT), RETRY_429_BACKOFFS);
     log.log('chat completions api: resp headers', {correlationId, headers: Object.fromEntries(resp.headers)});
-    if (!resp.ok) {
-        const msg = `chat completions api error, status: ${resp.status}`;
-        const body = await fetch_.parseRespBody(resp);
-        warnings(msg, {correlationId, body});
-        throw new Error(msg);
-    }
+    await common.checkRespOk(correlationId, warnings, (resp) => `chat completions api error, status: ${resp.status}`, resp);
     const timer = time.timer();
     const data = await streamReadBody(correlationId, onPartial, resp, timer, shortCircuitHook, warnings);
     try {
