@@ -10,7 +10,7 @@ const geolocate = wrapper.cache(cache.lruTtl(100, 30 * 60 * 1000), (correlationI
     wrapper.logCorrelationId('repository.web.ipaddr.geolocate', async (correlationId, ip) => {
         const resp = await wrapper.retry((e, cnt) => cnt < 2, async (...args) => {
             const resp = await fetch_.withTimeout(...args);
-            await common.checkRespOk(correlationId, log.log, (resp) => `ip api error, status: ${resp.status}`, resp);
+            await common.checkRespOk(correlationId, log.log, (resp) => `ip api error, status: ${resp.status}, ip: ${ip}`, resp);
             return resp;
         })(URL(ip), {method: 'GET'}, 30 * 1000);
         const data = await resp.json();
