@@ -2,6 +2,7 @@ import tokenizer from '../../repository/llm/tokenizer.js';
 import chat from '../../repository/llm/chat.js';
 import serp from '../../repository/web/serp.js';
 import memory from '../../repository/db/memory.js';
+import commonActive from './common.js';
 import common from '../common.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
@@ -9,19 +10,19 @@ import wrapper from '../../util/wrapper.js';
 import time from '../../util/time.js';
 
 const ACTION_LVL = 1; // NB: research is immediate subtask
-const MODEL_ANSWER_PROMPT = (input, query, recursedNote, recursedQuery) =>
+const MODEL_ANSWER_PROMPT = (promptOptions, input, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_CORE_MSG
     + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
-    + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
+    + `\n${common.MODEL_PROMPT_OPTIONS_PART(promptOptions)}`
     + `\ninput: ${input}`
     + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`
     + `\nsynthesize`;
-const MODEL_CONCLUSION_PROMPT = (answers, query, recursedNote, recursedQuery) =>
+const MODEL_CONCLUSION_PROMPT = (promptOptions, answers, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_CORE_MSG
     + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
-    + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
+    + `\n${common.MODEL_PROMPT_OPTIONS_PART(promptOptions)}`
     + `\nanswers: ${JSON.stringify(answers)}`
     + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
@@ -38,10 +39,12 @@ const ANSWER_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_ANSWER_TOK
 const SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS = strictParse.int(process.env.RESEARCH_SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS);
 const CONCLUSION_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_CONCLUSION_TOKEN_COUNT_LIMIT);
 
-const research = wrapper.logCorrelationId('service.active.research.research', async (correlationId, userId, sessionId, query, recursedNote, recursedQuery) => {
+const research = wrapper.logCorrelationId('service.active.research.research', async (correlationId, userId, sessionId, options, query, recursedNote, recursedQuery) => {
     log.log('research: parameters',
-        {correlationId, userId, sessionId, query, recursedNote, recursedQuery});
+        {correlationId, userId, sessionId, options, query, recursedNote, recursedQuery});
     const warnings = common.warnings();
+    const ipGeolocateTask = commonActive.ipGeolocate(correlationId, options, 'research');
+    const promptOptionsTask = commonActive.promptOptions(correlationId, options, ipGeolocateTask, warnings, 'research');
     const docId = common.DOC_ID.from(userId, sessionId);
     const timer = time.timer();
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
@@ -59,6 +62,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             warnings: warnings.get(),
         };
     }
+    const promptOptions = await promptOptionsTask;
     const answerTaskCount = Math.min(URL_COUNT, urls.length);
     const answerCosts = [];
     let availableI = answerTaskCount;
@@ -69,7 +73,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         let data = null;
         for (let j = 0; j <= RETRY_NEW_URL_COUNT; j++) {
             const o = await getAnswer(
-                correlationId, docId, query, recursedNote, recursedQuery, urls[currI]);
+                correlationId, docId, query, recursedNote, recursedQuery, urls[currI], promptOptions);
             reply = o.reply;
             data = o.data;
             if (reply || availableI >= urls.length || j === RETRY_NEW_URL_COUNT) {
@@ -141,7 +145,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         correlationId, SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS);
     await Promise.all(answersForPrompt.map(
         (reply) => answersShortCircuitHook.add(reply)));
-    const conclusionPrompt = MODEL_CONCLUSION_PROMPT(answersForPrompt, query, recursedNote, recursedQuery);
+    const conclusionPrompt = MODEL_CONCLUSION_PROMPT(promptOptions, answersForPrompt, query, recursedNote, recursedQuery);
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
     const conclusionTimer = time.timer();
     const {content: conclusion, usage} = await common.chatWithRetry(
@@ -181,8 +185,9 @@ const getTokenCounts = async (correlationId, docId, recursedNote, recursedQuery)
     return {recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuery, url) => {
-    log.log('research: get answer: parameters', {correlationId, docId, query, recursedNote, recursedQuery, url});
+const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuery, url, promptOptions) => {
+    log.log('research: get answer: parameters',
+        {correlationId, docId, query, recursedNote, recursedQuery, url, promptOptions});
     const warnings = common.warnings();
     let input = '';
     let reply = '';
@@ -200,7 +205,7 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
                 log.log('research: get answer: input has too few tokens; skip',
                     {correlationId, docId, url, inputTokenCount});
             } else {
-                const answerPrompt = MODEL_ANSWER_PROMPT(input, query, recursedNote, recursedQuery);
+                const answerPrompt = MODEL_ANSWER_PROMPT(promptOptions, input, query, recursedNote, recursedQuery);
                 log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
                 const {content: reply_, usage: usage_} = await common.chatWithRetry(
                     correlationId, null, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null, null, warnings);

@@ -1,3 +1,4 @@
+import common from '../common.js';
 import common_ from '../../common.js';
 import fetch_ from '../../util/fetch.js';
 import strictParse from '../../util/strictParse.js';
@@ -20,12 +21,7 @@ const embed = wrapper.logCorrelationId('repository.llm.embedding.embed', async (
             input: text,
         }),
     }, TIMEOUT);
-    if (!resp.ok) {
-        const msg = `embeddings api error, status: ${resp.status}`;
-        const body = await fetch_.parseRespBody(resp);
-        log.log(msg, {correlationId, body});
-        throw new Error(msg);
-    }
+    await common.checkRespOk(correlationId, log.log, (resp) => `embeddings api error, status: ${resp.status}`, resp);
     const data = await resp.json();
     const {embedding} = data.data[0];
     return {

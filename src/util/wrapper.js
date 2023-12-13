@@ -1,6 +1,21 @@
 import log from './log.js';
 import error from './error.js';
 
+const retry = (onError, fn) => async (...args) => {
+    let cnt = 0;
+    while (true) {
+        try {
+            return await fn(...args);
+        } catch (e) {
+            const isContinue = onError(e, cnt, ...args);
+            if (!isContinue) {
+                throw e;
+            }
+            cnt++;
+        }
+    }
+};
+
 const logCorrelationId = (name, fn) => async (correlationId, ...args) => {
     log.log(`[Start] ${name}`, {correlationId});
     const start = Date.now();
@@ -30,6 +45,7 @@ const cache = (cache, getKey, fn) => async (...args) => {
 };
 
 export default {
+    retry,
     logCorrelationId,
     cache,
 };

@@ -191,6 +191,8 @@
     const COPY_NOTE_MSG = '(response copied)'; // NB: clicking note copies response
     const COPY_DETAILS_MSG = '(details copied)';
     const COPY_HISTORY_MSG = '(history copied)';
+    const timezoneOffset = new Date().getTimezoneOffset();
+    console.log('timezoneOffset', timezoneOffset);
     const pageEl = document.getElementById('_page');
     const sessionIdLabelEl = document.getElementById('session-id-label');
     const sessionIdEl = document.getElementById('session-id');
@@ -263,7 +265,7 @@
             const set = ({url}) => {
                 if (url === undefined) url = _url;
                 if (url?.href !== _url?.href) {
-                    window.history.pushState({}, '', url);
+                    window.history.replaceState({}, '', url);
                     _url = url;
                 }
             };
@@ -468,7 +470,7 @@
             const resp = await fetch('/api/query', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({userId, sessionId, query}),
+                body: JSON.stringify({userId, sessionId, options: {timezoneOffset}, query}),
             });
             versionManager.checkResp(resp);
             if (!resp.ok) {
@@ -594,7 +596,7 @@
         let _version = versionEl.innerText;
         const check = (version) => {
             if (version !== _version) {
-                console.log(`version mismatch: ${version} !== ${_version}`);
+                console.log(`version mismatch: ${version} != ${_version}`);
                 versionEl.innerText = `${_version} (outdated)`;
             }
         };

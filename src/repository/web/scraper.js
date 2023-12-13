@@ -18,12 +18,7 @@ const extract = wrapper.logCorrelationId('repository.web.scraper.extract', async
         wait: WAIT.toString(),
         url,
     })}`, {}, TIMEOUT), RETRY_429_BACKOFFS);
-    if (!resp.ok) {
-        const msg = `zenrows api error, status: ${resp.status}`;
-        const body = await fetch_.parseRespBody(resp);
-        log.log(msg, {correlationId, body});
-        throw new Error(msg);
-    }
+    await common.checkRespOk(correlationId, log.log, (resp) => `zenrows api error, status: ${resp.status}, url: ${url}`, resp);
     const rawData = await resp.text();
     const root = htmlParser.parse(rawData, {
         blockTextElements: {

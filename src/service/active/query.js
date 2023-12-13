@@ -2,6 +2,7 @@ import * as uuid from 'uuid';
 import host from '../../repository/devops/host.js';
 import tokenizer from '../../repository/llm/tokenizer.js';
 import memory from '../../repository/db/memory.js';
+import commonActive from './common.js';
 import common from '../common.js';
 import common_ from '../../common.js';
 import fetch_ from '../../util/fetch.js';
@@ -24,10 +25,10 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_SUMMARY_FIELD = 'summary';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_IMAGINATION_FIELD = 'imagination';
-const MODEL_PROMPT = (info, search, actionHistory, actions, longTermContext, shortTermContext, query, recursedNote, recursedQuery) =>
+const MODEL_PROMPT = (promptOptions, info, search, actionHistory, actions, longTermContext, shortTermContext, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_CORE_MSG
     + `\n${!recursedQuery ? common.MODEL_PROMPT_EXTERNAL_COMPONENT_MSG : common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
-    + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
+    + `\n${common.MODEL_PROMPT_OPTIONS_PART(promptOptions)}`
     + (!info ? '' : `\ninternal information: ${info}`)
     + (!search ? '' : `\ninternal search: ${search}`)
     + `\ninternal action history, unknown to user: ${JSON.stringify(actionHistory)}`
@@ -93,14 +94,16 @@ const RECURSION_TIMEOUT = strictParse.int(process.env.QUERY_RECURSION_TIMEOUT_SE
 const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
 
-const query = wrapper.logCorrelationId('service.active.query.query', async (correlationId, onPartial, userId, sessionId, query, recursedNote, recursedQuery) => {
+const query = wrapper.logCorrelationId('service.active.query.query', async (correlationId, onPartial, userId, sessionId, options, query, recursedNote, recursedQuery) => {
     log.log('query: parameters',
-        {correlationId, userId, sessionId, query, recursedNote, recursedQuery});
+        {correlationId, userId, sessionId, options, query, recursedNote, recursedQuery});
     const warnings = common.warnings();
     const baseUrlTask = host.getBaseUrl(correlationId).then((baseUrl) => {
         log.log('query: base url', {correlationId, baseUrl});
         return baseUrl;
     }).catch((_) => '');
+    const ipGeolocateTask = commonActive.ipGeolocate(correlationId, options, 'query');
+    const promptOptionsTask = commonActive.promptOptions(correlationId, options, ipGeolocateTask, warnings, 'query');
     const docId = common.DOC_ID.from(userId, sessionId);
     const actionLvl = !recursedQuery ? 0 : 1;
     const timer = time.timer();
@@ -117,7 +120,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             if (!recursedQuery) {
                 return {info: '', infoTokenCount: 0};
             }
-            return await getInfo(correlationId, docId, recursedQuery, warnings);
+            return await getInfo(correlationId, docId, options, recursedQuery, warnings);
         })(),
         (async () => {
             if (!recursedQuery) {
@@ -151,6 +154,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             return {queryEmbedding, shortTermContext, longTermContext};
         })(),
     ]);
+    const promptOptions = await promptOptionsTask;
     const onPartialChat =
         !onPartial ? null : ({content}) => onPartial({event: 'reply', content});
     const actions = [];
@@ -169,7 +173,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     let i = 0;
     while (true) {
         const localPrompt = MODEL_PROMPT(
-            info, search, actionHistory, [...actionsForPrompt].reverse(), longTermContext, shortTermContext, query, recursedNote, recursedQuery);
+            promptOptions, info, search, actionHistory, [...actionsForPrompt].reverse(), longTermContext, shortTermContext, query, recursedNote, recursedQuery);
         prompts.push(localPrompt)
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
         const localChatTimer = time.timer();
@@ -229,7 +233,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                         break;
                 }
                 const {reply: reply_, data: data_} = await actionFn(
-                    correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings);
+                    correlationId, docId, options, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings);
                 const reply = reply_ || null;
                 const data = data_ || null;
                 if (data?.warnings) {
@@ -400,11 +404,11 @@ const getTokenCounts = async (correlationId, docId, query, recursedNote, recurse
     return {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getInfo = async (correlationId, docId, recursedQuery, warnings) => {
+const getInfo = async (correlationId, docId, options, recursedQuery, warnings) => {
     let info = '';
     let infoTokenCount = 0;
     try {
-        const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, recursedQuery);
+        const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, options.ip, recursedQuery);
         if (rawInfo.length) {
             const {truncated, tokenCount} = await tokenizer.truncate(
                 correlationId, JSON.stringify(rawInfo), INFO_TRUNCATION_TOKEN_COUNT);
@@ -555,7 +559,7 @@ const cleanFunctionCall = async (correlationId, docId, i, call) => {
     return {name: MODEL_FUNCTION_NAME, args: cleanArgs};
 };
 
-const thinkAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
+const thinkAction = async (correlationId, docId, options, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
     const {userId, sessionId} = common.DOC_ID.parse(docId);
     const recursedCorrelationId = uuid.v4();
     log.log('query: action: think: correlation id',
@@ -573,8 +577,8 @@ const thinkAction = async (correlationId, docId, query, recursedNextNote, recurs
                 [common_.INTERNAL_API_ACCESS_KEY_HEADER]: common_.SECRETS.INTERNAL_API_ACCESS_KEY,
             },
             body: JSON.stringify({
-                userId, sessionId, query,
-                recursedNote: recursedNextNote, recursedQuery: recursedNextQuery,
+                userId, sessionId, options,
+                query, recursedNote: recursedNextNote, recursedQuery: recursedNextQuery,
             }),
         }, RECURSION_TIMEOUT);
         if (!resp.ok) {
@@ -584,6 +588,10 @@ const thinkAction = async (correlationId, docId, query, recursedNextNote, recurs
         log.log('query: action: think: result',
             {correlationId, docId, recursedNextQuery, recursedCorrelationId});
         const {reply} = data;
+        if (!reply) {
+            warnings('query: action: think: no reply',
+                {correlationId, docId, recursedNextQuery, recursedCorrelationId});
+        }
         return {reply, data};
     } catch (e) {
         warnings.strong('query: action: think: failed',
@@ -592,7 +600,7 @@ const thinkAction = async (correlationId, docId, query, recursedNextNote, recurs
     }
 };
 
-const researchAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
+const researchAction = async (correlationId, docId, options, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
     const {userId, sessionId} = common.DOC_ID.parse(docId);
     const recursedCorrelationId = uuid.v4();
     log.log('query: action: research: correlation id',
@@ -610,8 +618,8 @@ const researchAction = async (correlationId, docId, query, recursedNextNote, rec
                 [common_.INTERNAL_API_ACCESS_KEY_HEADER]: common_.SECRETS.INTERNAL_API_ACCESS_KEY,
             },
             body: JSON.stringify({
-                userId, sessionId, query,
-                recursedNote: recursedNextNote, recursedQuery: recursedNextQuery,
+                userId, sessionId, options,
+                query, recursedNote: recursedNextNote, recursedQuery: recursedNextQuery,
             }),
         }, RECURSION_TIMEOUT);
         if (!resp.ok) {
@@ -621,6 +629,10 @@ const researchAction = async (correlationId, docId, query, recursedNextNote, rec
         log.log('query: action: research: result',
             {correlationId, docId, recursedNextQuery, recursedCorrelationId});
         const {reply} = data;
+        if (!reply) {
+            warnings('query: action: research: no reply',
+                {correlationId, docId, recursedNextQuery, recursedCorrelationId});
+        }
         return {reply, data};
     } catch (e) {
         warnings.strong('query: action: research: failed',
@@ -629,7 +641,7 @@ const researchAction = async (correlationId, docId, query, recursedNextNote, rec
     }
 };
 
-const replyAction = async (correlationId, docId, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
+const replyAction = async (correlationId, docId, options, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
     const reply = recursedNextNote || '';
     return {reply};
 };

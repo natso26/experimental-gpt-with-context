@@ -10,7 +10,7 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT = (context) =>
     common.MODEL_PROMPT_CORE_MSG
     + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
-    + `\ntime: ${common.MODEL_PROMPT_FORMATTED_TIME()}`
+    + `\n${common.MODEL_PROMPT_OPTIONS_PART({timezoneOffset: null, location: ''})}`
     + `\ncontext: ${JSON.stringify(context)}`
     + `\nanalyze`;
 const MIN_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MIN_WAIT_TIME_SECS) * 1000;
