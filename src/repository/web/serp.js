@@ -1,3 +1,4 @@
+import common from '../common.js';
 import common_ from '../../common.js';
 import fetch_ from '../../util/fetch.js';
 import strictParse from '../../util/strictParse.js';
@@ -13,12 +14,7 @@ const search = wrapper.logCorrelationId('repository.web.serp.search', async (cor
         engine: 'google',
         q: query,
     })}`, {}, TIMEOUT);
-    if (!resp.ok) {
-        const msg = `serpapi search api error, status: ${resp.status}`;
-        const body = await fetch_.parseRespBody(resp);
-        log.log(msg, {correlationId, body});
-        throw new Error(msg);
-    }
+    await common.checkRespOk(correlationId, log.log, (resp) => `serpapi search api error, status: ${resp.status}, query: ${query}`, resp);
     const rawData = await resp.json();
     const unfilteredData = pruneResp(rawData);
     const {search_metadata, search_parameters, pagination, error, ...data} = unfilteredData;
