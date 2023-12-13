@@ -1,6 +1,10 @@
 Inventio
 ========
 
+.. image:: https://raw.githubusercontent.com/natso26/experimental-gpt-with-context/master/public/mascot.jpeg
+   :alt: mascot
+   :width: 192px
+
 https://experimental-gpt-with-context-cbzjb4ar2q-as.a.run.app
 
 https://nightly---experimental-gpt-with-context-cbzjb4ar2q-as.a.run.app
