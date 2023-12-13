@@ -2,12 +2,12 @@ import tokenizer from '../../repository/llm/tokenizer.js';
 import chat from '../../repository/llm/chat.js';
 import serp from '../../repository/web/serp.js';
 import memory from '../../repository/db/memory.js';
+import commonActive from "./common.js";
 import common from '../common.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
 import time from '../../util/time.js';
-import commonActive from "./common.js";
 
 const ACTION_LVL = 1; // NB: research is immediate subtask
 const MODEL_ANSWER_PROMPT = (promptOptions, input, query, recursedNote, recursedQuery) =>
