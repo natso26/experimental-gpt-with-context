@@ -12,7 +12,7 @@ const geolocate = wrapper.cache(cache.lruTtl(100, 30 * 60 * 1000), (correlationI
             const resp = await fetch_.withTimeout(...args);
             await common.checkRespOk(correlationId, log.log, (resp) => `ip api error, status: ${resp.status}, ip: ${ip}`, resp);
             return resp;
-        })(URL(ip), {method: 'GET'}, 30 * 1000);
+        })(URL(ip), {}, 30 * 1000);
         const data = await resp.json();
         log.log(`ip api: data for ip ${ip}`, {correlationId, ip, data});
         return data;

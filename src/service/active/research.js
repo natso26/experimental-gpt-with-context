@@ -44,12 +44,14 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         {correlationId, userId, sessionId, options, query, recursedNote, recursedQuery});
     const warnings = common.warnings();
     const ipGeolocateTask = commonActive.ipGeolocate(correlationId, options, 'research');
+    const uuleCanonicalNameTask = commonActive.uuleCanonicalName(correlationId, ipGeolocateTask, warnings, 'research');
     const promptOptionsTask = commonActive.promptOptions(correlationId, options, ipGeolocateTask, warnings, 'research');
     const docId = common.DOC_ID.from(userId, sessionId);
     const timer = time.timer();
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, recursedNote, recursedQuery);
-    const {data: search} = await common.serpSearchWithRetry(correlationId, recursedQuery);
+    const uuleCanonicalName = await uuleCanonicalNameTask;
+    const {data: search} = await common.serpSearchWithRetry(correlationId, recursedQuery, uuleCanonicalName || null);
     const urls = !search ? [] : serp.getOrganicLinks(search);
     log.log('research: urls', {correlationId, docId, urls});
     if (!urls.length) {
