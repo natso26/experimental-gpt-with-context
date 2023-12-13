@@ -6,8 +6,11 @@ const isInteger = (v) => typeof v === 'number' && v % 1 === 0;
 
 const isUuidV4 = (v) => typeof v === 'string' && UUID_V4_REGEX.test(v);
 
+const isTimezoneOffsetOption = (v) => v === null || v === 'auto' || isInteger(v);
+
 export default {
     isNonEmptyString,
     isInteger,
     isUuidV4,
+    isTimezoneOffsetOption,
 };

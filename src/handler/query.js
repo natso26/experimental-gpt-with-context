@@ -13,7 +13,7 @@ const externalQuery = wrapper.logCorrelationId('handler.query.externalQuery', as
     if (!common.isUuidV4(sessionId)) {
         throw new Error(`field \`sessionId\` must be UUID v4: ${sessionId}`);
     }
-    if (timezoneOffset !== null && timezoneOffset !== 'auto' && !common.isInteger(timezoneOffset)) {
+    if (!common.isTimezoneOffsetOption(timezoneOffset)) {
         throw new Error(`field \`options.timezoneOffset\` must be null, 'auto', or integer: ${timezoneOffset}`);
     }
     if (!common.isNonEmptyString(ip)) {
@@ -56,7 +56,7 @@ const internalQuery = wrapper.logCorrelationId('handler.query.internalQuery', as
     const {timezoneOffset, ip} = options;
     if (!common.isUuidV4(userId)
         || !common.isUuidV4(sessionId)
-        || (timezoneOffset !== null && timezoneOffset !== 'auto' && !common.isInteger(timezoneOffset))
+        || !common.isTimezoneOffsetOption(timezoneOffset)
         || !common.isNonEmptyString(ip)
         || !common.isNonEmptyString(query)
         || !(recursedNote === null || common.isNonEmptyString(recursedNote))

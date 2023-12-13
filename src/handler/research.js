@@ -7,7 +7,7 @@ const internalResearch = wrapper.logCorrelationId('handler.research.internalRese
     const {timezoneOffset, ip} = options;
     if (!common.isUuidV4(userId)
         || !common.isUuidV4(sessionId)
-        || (timezoneOffset !== null && timezoneOffset !== 'auto' && !common.isInteger(timezoneOffset))
+        || !common.isTimezoneOffsetOption(timezoneOffset)
         || !common.isNonEmptyString(ip)
         || !common.isNonEmptyString(query)
         || !(recursedNote === null || common.isNonEmptyString(recursedNote))
