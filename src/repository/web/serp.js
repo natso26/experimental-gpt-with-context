@@ -36,13 +36,12 @@ const search = wrapper.logCorrelationId('repository.web.serp.search', async (cor
     })}`, {}, TIMEOUT);
     await common.checkRespOk(correlationId, log.log, (resp) => `serpapi search api error, status: ${resp.status}, query: ${query}`, resp);
     const rawData = await resp.json();
-    const unfilteredData = pruneResp(rawData);
-    const {search_metadata, search_parameters, pagination, error, ...data} = unfilteredData;
-    if (error) {
+    if (rawData.error) {
         return {
             data: null,
         };
     }
+    const data = pruneResp(rawData);
     return {
         data,
     };
@@ -54,28 +53,38 @@ const getOrganicLinks = (data) => {
     return organicResults.map(({link}) => link);
 };
 
-const pruneResp = (data) => {
-    if (Array.isArray(data)) {
-        return data.map(pruneResp);
-    } else if (data !== null && typeof data === 'object') {
-        const ret = {};
-        for (const [k, v] of Object.entries(data)) {
-            if (k.includes('serpapi') || k === 'next_page_token') {
-                continue;
-            }
-            ret[k] = pruneResp(v);
+const pruneResp = (() => {
+    const EXCLUDE_KEYS = ['place_id', 'lsig', 'chips', 'position', 'block_position', 'cached_page_link', 'related_pages_link'];
+    const EXCLUDE_STR_PREFIXES = ['https://serpapi.com/', 'https://www.google.com/search', 'https://webcache.googleusercontent.com/search'];
+    const EXCLUDE_STR_GSTATIC_REGEXP = /^https:\/\/[a-z0-9\-]+\.gstatic\.com\//;
+    const pruneArr = (arr) => arr.map(pruneAny);
+    const pruneObj = (obj) => {
+        const o = {};
+        for (const [k, v] of Object.entries(obj)) {
+            if (k.includes('serpapi') || EXCLUDE_KEYS.includes(k) || k.endsWith('page_token')) continue;
+            o[k] = pruneAny(v);
         }
-        return ret;
-    } else if (typeof data === 'string') {
-        if (data.startsWith('https://serpapi.com/') || data.startsWith('https://www.google.com/')) {
-            return '';
-        } else {
-            return data;
-        }
-    } else {
-        return data;
-    }
-};
+        return o;
+    };
+    const pruneStr = (str) => {
+        for (const s of EXCLUDE_STR_PREFIXES) if (str.startsWith(s)) return '';
+        if (EXCLUDE_STR_GSTATIC_REGEXP.test(str)) return '';
+        return str;
+    };
+    const pruneAny = (v) => {
+        if (Array.isArray(v)) return pruneArr(v);
+        else if (v !== null && typeof v === 'object') return pruneObj(v);
+        else if (typeof v === 'string') return pruneStr(v);
+        else return v;
+    };
+    return (v) => {
+        const {
+            search_metadata, search_parameters, search_information: {organic_results_state} = {},
+            pagination, serpapi_pagination, error, ...rest
+        } = v;
+        return {search_information: {organic_results_state}, ...pruneObj(rest)};
+    };
+})();
 
 export default {
     getLocations,

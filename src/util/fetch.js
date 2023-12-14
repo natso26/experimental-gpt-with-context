@@ -3,10 +3,9 @@ import fetch_ from 'node-fetch';
 
 const withTimeout = async (url, options, timeout) => {
     const controller = new AbortController();
-    const {abort: abort_, signal: signal_} = controller;
-    const abort = abort_.bind(controller);
+    const {signal: signal_} = controller;
     const signal = !options.signal ? signal_ : anySignal([signal_, options.signal]);
-    const timeoutId = setTimeout(abort, timeout);
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
         return await fetch_(url, {...options, signal});
     } finally {
@@ -17,14 +16,13 @@ const withTimeout = async (url, options, timeout) => {
 // CR: https://github.com/whatwg/fetch/issues/905
 const anySignal = (signals) => {
     const controller = new AbortController();
-    const {abort: abort_, signal} = controller;
-    const abort = abort_.bind(controller);
+    const {signal} = controller;
     for (const s of signals) {
         if (s.aborted) {
-            abort(s.reason);
+            controller.abort(s.reason);
             break;
         }
-        s.addEventListener('abort', () => abort(s.reason), {signal});
+        s.addEventListener('abort', () => controller.abort(s.reason), {signal});
     }
     return signal;
 };
