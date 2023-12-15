@@ -38,6 +38,9 @@ const SECRETS = (() => {
     };
 })();
 
+// CR: https://stackoverflow.com/questions/61086833/async-await-in-express-middleware
+const asyncMiddleware = fn => (req, res, next) => fn(req, res, next).catch(next);
+
 export default {
     API_ROUTE_PREFIX,
     INTERNAL_ROUTE_PREFIX,
@@ -56,4 +59,5 @@ export default {
     CORRELATION_ID_HEADER,
     INTERNAL_API_ACCESS_KEY_HEADER,
     SECRETS,
+    asyncMiddleware,
 };

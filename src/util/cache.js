@@ -23,6 +23,7 @@ const lruTtl = (size, ttl) => {
             const e = {v, exp};
             memory.set(k, e);
         },
+        clear: () => memory.clear(),
     };
 };
 
