@@ -5,9 +5,10 @@ import fetch_ from '../../util/fetch.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
+import time from '../../util/time.js';
 
 const URL = 'https://api.zenrows.com/v1';
-const TIMEOUT = strictParse.int(process.env.ZENROWS_API_TIMEOUT_SECS) * 1000;
+const TIMEOUT = strictParse.int(process.env.ZENROWS_API_TIMEOUT_SECS) * time.SECOND;
 const WAIT = strictParse.int(process.env.ZENROWS_API_WAIT_MS);
 const RETRY_429_BACKOFFS = strictParse.json(process.env.ZENROWS_API_RETRY_429_BACKOFFS_MS);
 

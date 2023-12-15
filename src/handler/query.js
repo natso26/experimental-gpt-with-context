@@ -30,6 +30,10 @@ const externalQuery = wrapper.logCorrelationId('handler.query.externalQuery', as
                 partialReply = '';
                 onPartial({event: 'task', kind: o.kind});
                 break;
+            case 'task-start':
+                partialReply = '';
+                onPartial({event: 'task-start', kind: o.kind});
+                break;
             case 'reply':
                 const oldPartialReply = partialReply;
                 partialReply = o.content;

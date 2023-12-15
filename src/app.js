@@ -15,6 +15,7 @@ import strictParse from './util/strictParse.js';
 import log from './util/log.js';
 import cache from './util/cache.js';
 import wrapper from './util/wrapper.js';
+import time from './util/time.js';
 import error from './util/error.js';
 
 const INDEX_HTML_PATH = './public/index.html';
@@ -28,9 +29,9 @@ const _OVERRIDE_IP = process.env.OVERRIDE_IP;
 (process.env.ENV === 'local' || !_OVERRIDE_IP) || (() => {
     throw new Error('OVERRIDE_IP not correctly set');
 })();
-const SSE_KEEPALIVE_INTERVAL = strictParse.int(process.env.APP_SSE_KEEPALIVE_INTERVAL_SECS) * 1000;
+const SSE_KEEPALIVE_INTERVAL = strictParse.int(process.env.APP_SSE_KEEPALIVE_INTERVAL_SECS) * time.SECOND;
 const RENDER_INDEX_HTML = wrapper.cache(
-    cache.lruTtl(10, 90000), ({page, version}) => `${version}-${page}`, async ({page, version}) => {
+    cache.lruTtl(10, 15 * time.MINUTE), ({page, version}) => `${version}-${page}`, async ({page, version}) => {
         const s = await fs.promises.readFile(INDEX_HTML_PATH, {encoding: 'utf-8'});
         return s.replace('{{ PAGE }}', page)
             .replace('{{ VERSION }}', version);

@@ -1,4 +1,5 @@
 import * as uuid from 'uuid';
+import revision from './revision.js';
 import host from '../../repository/devops/host.js';
 import tokenizer from '../../repository/llm/tokenizer.js';
 import memory from '../../repository/db/memory.js';
@@ -6,6 +7,7 @@ import commonActive from './common.js';
 import common from '../common.js';
 import common_ from '../../common.js';
 import fetch_ from '../../util/fetch.js';
+import cache from '../../util/cache.js';
 import number from '../../util/number.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
@@ -57,7 +59,8 @@ const MODEL_FUNCTION = {
             type: 'object',
             properties: {
                 [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: {type: 'string', description: 'thoughts'},
-                [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]: {type: 'string', description: 'search query'},
+                [MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME]:
+                    {type: 'string', description: 'search query, for search engine'},
                 [MODEL_FUNCTION_KIND_ARG_NAME]: {type: 'string', enum: MODEL_FUNCTION_KINDS},
             },
             required: [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME, MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME, MODEL_FUNCTION_KIND_ARG_NAME],
@@ -78,7 +81,7 @@ const CTX_SCORE_REST_ITEMS_MULT_FACTOR = strictParse.float(process.env.QUERY_CTX
 const CTX_SCORE_REST_ITEMS_IDX_OFFSET = strictParse.float(process.env.QUERY_CTX_SCORE_REST_ITEMS_IDX_OFFSET);
 const CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT = strictParse.float(process.env.QUERY_CTX_SCORE_REST_ITEMS_IDX_DECAY_EXPONENT);
 const CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR = strictParse.float(process.env.QUERY_CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MULT_FACTOR);
-const CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MS_VAL = strictParse.float(process.env.QUERY_CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_HOUR_VAL) / (3600 * 1000);
+const CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_MS_VAL = strictParse.float(process.env.QUERY_CTX_SCORE_REST_ITEMS_IDX_TIME_PENALTY_HOUR_VAL) / time.HOUR;
 const CTX_SCORE = (i, ms, getSim) => {
     if (i < CTX_SCORE_FIRST_ITEMS_COUNT) {
         return CTX_SCORE_FIRST_ITEMS_MAX_VAL - CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY * i;
@@ -88,11 +91,12 @@ const CTX_SCORE = (i, ms, getSim) => {
 };
 const SHORT_TERM_CONTEXT_COUNT = strictParse.int(process.env.QUERY_SHORT_TERM_CONTEXT_COUNT);
 const LONG_TERM_CONTEXT_COUNT = strictParse.int(process.env.QUERY_LONG_TERM_CONTEXT_COUNT);
+const HISTORY_COUNT = strictParse.int(process.env.QUERY_HISTORY_COUNT);
 const SHORT_CIRCUIT_TO_ACTION_OVERLAPPING_TOKENS = strictParse.int(process.env.QUERY_SHORT_CIRCUIT_TO_ACTION_OVERLAPPING_TOKENS);
 const REPLY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_REPLY_TOKEN_COUNT_LIMIT);
-const RECURSION_TIMEOUT = strictParse.int(process.env.QUERY_RECURSION_TIMEOUT_SECS) * 1000;
-const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
-const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * 60 * 1000;
+const RECURSION_TIMEOUT = strictParse.int(process.env.QUERY_RECURSION_TIMEOUT_SECS) * time.SECOND;
+const MIN_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MIN_SCHEDULED_IMAGINATION_DELAY_MINUTES) * time.MINUTE;
+const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SCHEDULED_IMAGINATION_DELAY_MINUTES) * time.MINUTE;
 
 const query = wrapper.logCorrelationId('service.active.query.query', async (correlationId, onPartial, userId, sessionId, options, query, recursedNote, recursedQuery) => {
     log.log('query: parameters',
@@ -158,7 +162,10 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     const promptOptions = await promptOptionsTask;
     const onPartialChat =
         !onPartial ? null : ({content}) => onPartial({event: 'reply', content});
+    const getHistoryCached = wrapper.cache(cache.lruTtl(1, 30 * time.MINUTE), () => '',
+        () => getHistory(correlationId, docId));
     const actions = [];
+    const actionsForRevision = [];
     const actionsForPrompt = [];
     const actionCosts = [];
     const prompts = [];
@@ -181,7 +188,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         const {content: localReply, functionCalls: localFunctionCalls, usage: localUsage} = await common.chatWithRetry(
             correlationId, onPartialChat, localPrompt, REPLY_TOKEN_COUNT_LIMIT, actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null, warnings);
         elapsedChats.push(localChatTimer.elapsed());
-        usages.push(localUsage);
+        usages.push({iter: i, step: 'main', ...localUsage});
         if (!localFunctionCalls.length) {
             reply = localReply;
             break;
@@ -194,8 +201,10 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         const cleanedLocalFunctionCalls = await Promise.all(localFunctionCalls.map((call) =>
             cleanFunctionCall(correlationId, docId, i, call)));
         const localFunctionCallsTimer = time.timer();
+        const elapsedLocalFunctionCallRevisions = [];
+        const revisedLocalFunctionCalls = [];
         const rawLocalActionTasks = [];
-        for (const {args} of cleanedLocalFunctionCalls) {
+        for (const [j, {args}] of cleanedLocalFunctionCalls.entries()) {
             const {
                 [MODEL_FUNCTION_KIND_ARG_NAME]: kind,
                 [MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME]: recursedNextNote,
@@ -205,20 +214,32 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 log.log(`query: iter ${i}: function call: invalid args`, {correlationId, docId, i, args});
                 continue;
             }
-            if (cleanedFunctionCalls.some(({v: calls}) => calls.some(({args}) =>
+            const revisionData = await revise(
+                correlationId, docId, query, kind, recursedNextNote, recursedNextQuery, getHistoryCached, actionsForRevision, promptOptions, warnings);
+            revisedLocalFunctionCalls.push({revisedRecursedQuery: revisionData.reply});
+            if (revisionData.reply) {
+                usages.push({iter: i, subIter: j, step: 'revision', ...revisionData.usage});
+                elapsedLocalFunctionCallRevisions.push({subIter: j, ...revisionData.timeStats});
+            }
+            const recursedNextQuery_ = revisionData.reply || recursedNextQuery;
+            // NB: check revised against unrevised
+            if (cleanedFunctionCalls.some((calls) => calls.some(({args}) =>
                 args[MODEL_FUNCTION_KIND_ARG_NAME] === kind
                 && args[MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME] === recursedNextNote
-                && args[MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME] === recursedNextQuery))) {
+                && args[MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME] === recursedNextQuery_))) {
                 log.log(`query: iter ${i}: function call: duplicate with previous iters`,
                     {correlationId, docId, i, args});
                 continue;
             }
             if (actionHistory.some((action) =>
                 (recursedNextNote && action[MODEL_PROMPT_RECURSED_NOTE_FIELD] === recursedNextNote)
-                && action[MODEL_PROMPT_RECURSED_QUERY_FIELD] === recursedNextQuery)) {
+                && action[MODEL_PROMPT_RECURSED_QUERY_FIELD] === recursedNextQuery_)) {
                 log.log(`query: iter ${i}: function call: duplicate with action history`,
                     {correlationId, docId, i, args});
                 continue;
+            }
+            if (onPartial) {
+                onPartial({event: 'task-start', kind});
             }
             rawLocalActionTasks.push((async () => {
                 let actionFn;
@@ -234,7 +255,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                         break;
                 }
                 const {reply: reply_, data: data_} = await actionFn(
-                    correlationId, docId, options, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings);
+                    correlationId, docId, options, query, recursedNextNote, recursedNextQuery_, baseUrlTask, warnings);
                 const reply = reply_ || null;
                 const data = data_ || null;
                 if (data?.warnings) {
@@ -245,7 +266,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                     data,
                     kind,
                     recursedNextNote,
-                    recursedNextQuery,
+                    recursedNextQuery: recursedNextQuery_,
                 };
             })());
         }
@@ -287,17 +308,25 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 timestamp,
             };
         })));
-        // NB: exclude fields to not influence further actions
-        const localActionsForPrompt = localActions.filter(({reply}) => reply)
-            .map(({reply}) => ({[MODEL_PROMPT_REPLY_FIELD]: reply}));
+        const localActions_ = localActions.filter(({reply}) => reply);
         actions.push({v: localActions});
-        actionsForPrompt.push(...localActionsForPrompt);
-        elapsedFunctionCalls.push(localFunctionCallsTimer.elapsed());
-        functionCalls.push({v: localFunctionCalls});
-        cleanedFunctionCalls.push({v: cleanedLocalFunctionCalls});
-        await Promise.all(localActionsForPrompt.map(
-            ({[MODEL_PROMPT_REPLY_FIELD]: reply}) => actionsShortCircuitHook.add(reply)));
-        if (!localActionsForPrompt.length) {
+        actionsForRevision.push(localActions_.map(({kind, recursedNextNote, recursedNextQuery, reply}) => ({
+            [revision.MODEL_PROMPT_KIND_FIELD]: kind,
+            [revision.MODEL_PROMPT_RECURSED_NOTE_FIELD]: recursedNextNote,
+            [revision.MODEL_PROMPT_RECURSED_QUERY_FIELD]: recursedNextQuery,
+            [revision.MODEL_PROMPT_REPLY_FIELD]: reply,
+        })));
+        // NB: exclude fields to not influence further actions
+        actionsForPrompt.push(...localActions_.map(({reply}) => ({[MODEL_PROMPT_REPLY_FIELD]: reply})));
+        elapsedFunctionCalls.push({
+            total: localFunctionCallsTimer.elapsed(),
+            revisions: elapsedLocalFunctionCallRevisions,
+        });
+        functionCalls.push({v: localFunctionCalls.map((v, j) => ({...v, ...revisedLocalFunctionCalls[j]}))});
+        cleanedFunctionCalls.push(cleanedLocalFunctionCalls);
+        await Promise.all(localActions_.map(
+            ({reply}) => actionsShortCircuitHook.add(reply)));
+        if (!localActions_.length) {
             log.log(`query: iter ${i}: function call: no result`, {correlationId, docId, i});
             isFinalIter = true;
         }
@@ -314,19 +343,19 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     const extra = {
         correlationId,
         options: {options, promptOptions},
-        info,
-        search,
+        ...(!info ? {} : {info}),
+        ...(!search ? {} : {search}),
         actionHistory,
         shortTermContext,
         longTermContext,
         functionCalls,
         actions,
         tokenCounts: {
-            query: queryTokenCount,
-            recursedNote: recursedNoteTokenCount,
-            recursedQuery: recursedQueryTokenCount,
-            info: infoTokenCount,
-            search: searchTokenCount,
+            ...(!queryTokenCount ? {} : {query: queryTokenCount}),
+            ...(!recursedNoteTokenCount ? {} : {recursedNote: recursedNoteTokenCount}),
+            ...(!recursedQueryTokenCount ? {} : {recursedQuery: recursedQueryTokenCount}),
+            ...(!infoTokenCount ? {} : {info: infoTokenCount}),
+            ...(!searchTokenCount ? {} : {search: searchTokenCount}),
         },
         usages,
         cost: common.CHAT_COST.sum([...actionCosts, ...usages.map(common.CHAT_COST)]),
@@ -562,6 +591,38 @@ const cleanFunctionCall = async (correlationId, docId, i, call) => {
     return {name: MODEL_FUNCTION_NAME, args: cleanArgs};
 };
 
+const getHistory = async (correlationId, docId) => {
+    const rawHistory = await memory.getHistory(correlationId, docId, 0, HISTORY_COUNT);
+    const history = rawHistory.map(
+        ({
+             [common.QUERY_FIELD]: query,
+             [common.REPLY_FIELD]: reply
+         }) => ({
+            [revision.MODEL_PROMPT_QUERY_FIELD]: query,
+            [revision.MODEL_PROMPT_REPLY_FIELD]: reply,
+        }));
+    log.log('query: history', {correlationId, docId, history});
+    return {history};
+};
+
+const revise = async (correlationId, docId, query, kind, recursedNextNote, recursedNextQuery, getHistory, actions, promptOptions, warnings) => {
+    if (kind !== MODEL_FUNCTION_KIND_REPLY) {
+        try {
+            const history = await getHistory();
+            const data = await revision.revise(
+                correlationId, docId, query, recursedNextNote, recursedNextQuery, history, actions, promptOptions);
+            if (data.warnings) {
+                warnings.merge(data.warnings);
+            }
+            return data;
+        } catch (e) {
+            warnings.strong(`query: revise: failed`,
+                {correlationId, docId, kind, recursedNextNote, recursedNextQuery}, e);
+        }
+    }
+    return {reply: null};
+};
+
 const thinkAction = async (correlationId, docId, options, query, recursedNextNote, recursedNextQuery, baseUrlTask, warnings) => {
     const {userId, sessionId} = common.DOC_ID.parse(docId);
     const recursedCorrelationId = uuid.v4();
@@ -680,7 +741,7 @@ const triggerBackgroundTasks = async (correlationId, docId, index, baseUrlTask, 
                 [common_.INTERNAL_API_ACCESS_KEY_HEADER]: common_.SECRETS.INTERNAL_API_ACCESS_KEY,
             },
             body: JSON.stringify({userId, sessionId}),
-        }, 60 * 1000).catch((e) => (e.name !== 'AbortError') &&
+        }, time.MINUTE).catch((e) => (e.name !== 'AbortError') &&
             log.log(`query: fetch ${common_.CONSOLIDATE_INTERNAL_ROUTE} failed`,
                 {correlationId, docId, ...error.explain(e)}));
         fetch_.withTimeout(INTROSPECT_INTERNAL_URL(baseUrl), {
@@ -691,7 +752,7 @@ const triggerBackgroundTasks = async (correlationId, docId, index, baseUrlTask, 
                 [common_.INTERNAL_API_ACCESS_KEY_HEADER]: common_.SECRETS.INTERNAL_API_ACCESS_KEY,
             },
             body: JSON.stringify({userId, sessionId, index}),
-        }, 60 * 1000).catch((e) => (e.name !== 'AbortError') &&
+        }, time.MINUTE).catch((e) => (e.name !== 'AbortError') &&
             log.log(`query: fetch ${common_.INTROSPECT_INTERNAL_ROUTE} failed`,
                 {correlationId, docId, ...error.explain(e)}));
     } catch (e) {

@@ -4,9 +4,10 @@ import fetch_ from '../../util/fetch.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
+import time from '../../util/time.js';
 
 const URL = 'https://api.wolframalpha.com/v2/query';
-const TIMEOUT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_API_TIMEOUT_SECS) * 1000;
+const TIMEOUT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_API_TIMEOUT_SECS) * time.SECOND;
 
 const query = wrapper.logCorrelationId('repository.web.wolframAlpha.query', async (correlationId, ip, query) => {
     const resp = await fetch_.withTimeout(`${URL}?${new URLSearchParams({
