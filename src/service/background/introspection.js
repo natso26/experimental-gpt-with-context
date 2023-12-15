@@ -13,8 +13,8 @@ const MODEL_PROMPT = (context) =>
     + `\n${common.MODEL_PROMPT_OPTIONS_PART(common.EMPTY_PROMPT_OPTIONS())}`
     + `\ncontext: ${JSON.stringify(context)}`
     + `\nanalyze`;
-const MIN_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MIN_WAIT_TIME_SECS) * 1000;
-const MAX_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MAX_WAIT_TIME_SECS) * 1000;
+const MIN_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MIN_WAIT_TIME_SECS) * time.SECOND;
+const MAX_WAIT_TIME = strictParse.int(process.env.INTROSPECTION_MAX_WAIT_TIME_SECS) * time.SECOND;
 const CONTEXT_COUNT = strictParse.int(process.env.INTROSPECTION_CONTEXT_COUNT);
 const TOKEN_COUNT_LIMIT = strictParse.int(process.env.INTROSPECTION_TOKEN_COUNT_LIMIT);
 
@@ -57,7 +57,7 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
     const extra = {
         correlationId,
         inputIndex: index,
-        waitTime: waitTime / 1000,
+        waitTime: waitTime / time.SECOND,
         context,
         usage,
         cost: common.CHAT_COST(usage),

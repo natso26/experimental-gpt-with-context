@@ -4,8 +4,9 @@ import cache from '../../util/cache.js';
 import number from '../../util/number.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
+import time from '../../util/time.js';
 
-const canonicalNameCache = cache.lruTtl(100, 30 * 60 * 1000);
+const canonicalNameCache = cache.lruTtl(100, 30 * time.MINUTE);
 let locationGrid = {};
 
 const init = async () => {

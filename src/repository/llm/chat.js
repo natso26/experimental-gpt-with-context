@@ -13,13 +13,14 @@ import error from '../../util/error.js';
 const URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4-1106-preview';
 const TOP_P = strictParse.float(process.env.CHAT_COMPLETIONS_API_TOP_P);
-const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * 1000;
+const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * time.SECOND;
 const RETRY_429_BACKOFFS = strictParse.json(process.env.CHAT_COMPLETIONS_API_RETRY_429_BACKOFFS_MS);
 const EMPTY_USAGE = () => ({inTokens: 0, outTokens: 0});
 const _DEV_FLAG_NOT_STREAM = false;
 (process.env.ENV === 'local' || !_DEV_FLAG_NOT_STREAM) || (() => {
     throw new Error('_DEV_FLAG_NOT_STREAM not correctly set');
 })();
+const FINISH_REASON_LENGTH = 'length';
 
 const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, input, maxTokens, shortCircuitHook, fn, warnings) => {
     const resp = await common.retry429(correlationId, () => fetch_.withTimeout(URL, {
@@ -63,7 +64,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     } catch (e) {
         log.log('chat completions api: problem destroying response body', {correlationId, ...error.explain(e)});
     }
-    const {content, toolCalls} = data;
+    const {content, toolCalls, finishReason} = data;
     const functionCalls = toolCalls.map((call) => {
         const {name, args: rawArgs} = call;
         try {
@@ -84,6 +85,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     const out = {
         content,
         functionCalls,
+        finishReason,
         usage,
     };
     log.log('chat completions api: out', {correlationId, out});
@@ -96,6 +98,7 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
     }
     let content = '';
     let toolCalls = [];
+    let finishReason = null;
     let wantThrow = false;
     const processChunk = (chunk) => {
         try {
@@ -129,6 +132,7 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
                 }
             }
             if (chunkFinishReason) { // minor optimization
+                finishReason = chunkFinishReason;
                 return true;
             }
         } catch (e) {
@@ -150,13 +154,13 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
                 } else {
                     const isDone = processChunk(currChunk);
                     if (isDone) {
-                        return {content, toolCalls};
+                        return {content, toolCalls, finishReason};
                     }
                     const shortCircuit = shortCircuitHook?.({content, toolCalls});
                     if (shortCircuit) {
                         log.log('chat completions api: short circuiting',
                             {correlationId, content, toolCalls});
-                        return shortCircuit;
+                        return {...shortCircuit, finishReason: '_short_circuit'};
                     }
                     currChunk = null;
                 }
@@ -178,17 +182,17 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
                 currChunk += line;
             }
         }
-        if (1000 * timer.elapsed() > TIMEOUT) { // separate from req timeout
+        if (time.SECOND * timer.elapsed() > TIMEOUT) { // separate from req timeout
             warnings.strong('chat completions api: timeout', {correlationId});
             break;
         }
     }
-    return {content, toolCalls};
+    return {content, toolCalls, finishReason};
 };
 
 const tokenUsage = async (correlationId, input, fn, content, toolCalls, warnings) => {
     try {
-        const doCount = wrapper.cache(cache.lruTtl(50, 1000), (s) => s,
+        const doCount = wrapper.cache(cache.lruTtl(50, time.SECOND), (s) => s,
             (s) => tokenizer.countTokens(correlationId, s));
         const countToolCall = async ({name, args}) => await doCount(name) + await doCount(args);
         const inputPad = 7;
@@ -226,5 +230,6 @@ const _notStreamReadBody = async (correlationId, resp) => {
 
 export default {
     EMPTY_USAGE,
+    FINISH_REASON_LENGTH,
     chat,
 };

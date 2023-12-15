@@ -47,6 +47,7 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
                 {correlationId, docId});
             return {
                 imagination: null,
+                warnings: warnings.get(),
             };
         }
         // NB: summary and imagination not distinguished

@@ -5,18 +5,19 @@ import cache from '../../util/cache.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
+import time from '../../util/time.js';
 
 const LOCATIONS_URL = 'https://serpapi.com/locations.json';
 const SEARCH_URL = 'https://serpapi.com/search';
-const TIMEOUT = strictParse.int(process.env.SERPAPI_SEARCH_API_TIMEOUT_SECS) * 1000;
+const TIMEOUT = strictParse.int(process.env.SERPAPI_SEARCH_API_TIMEOUT_SECS) * time.SECOND;
 
-const getLocations = wrapper.cache(cache.lruTtl(1, 60 * 60 * 1000), (correlationId, callback) => '',
+const getLocations = wrapper.cache(cache.lruTtl(1, time.HOUR), (correlationId, callback) => '',
     wrapper.logCorrelationId('repository.web.serp.getLocations', async (correlationId, callback) => {
         const resp = await wrapper.retry((e, cnt) => cnt < 3, async (...args) => {
             const resp = await fetch_.withTimeout(...args);
             await common.checkRespOk(correlationId, log.log, (resp) => `serapi locations api error, status: ${resp.status}`, resp);
             return resp;
-        })(LOCATIONS_URL, {}, 30 * 1000);
+        })(LOCATIONS_URL, {}, 30 * time.SECOND);
         const locations_ = await resp.json();
         const locations = locations_.map(({canonical_name, target_type, reach, gps}) =>
             ({canonicalName: canonical_name, targetType: target_type, reach, lat: gps?.[1], lon: gps?.[0]}))
@@ -32,6 +33,7 @@ const search = wrapper.logCorrelationId('repository.web.serp.search', async (cor
         api_key: common_.SECRETS.SERPAPI_API_KEY,
         engine: 'google',
         q: query,
+        hl: 'en',
         ...(!location ? {} : {location}),
     })}`, {}, TIMEOUT);
     await common.checkRespOk(correlationId, log.log, (resp) => `serpapi search api error, status: ${resp.status}, query: ${query}`, resp);

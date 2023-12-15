@@ -1,8 +1,9 @@
 import user_ from '../../repository/db/user.js';
 import cache from '../../util/cache.js';
 import wrapper from '../../util/wrapper.js';
+import time from '../../util/time.js';
 
-const roleCache = cache.lruTtl(100, 30 * 60 * 1000);
+const roleCache = cache.lruTtl(100, 15 * time.MINUTE);
 
 const getRole = wrapper.cache(roleCache, (correlationId, userId) => userId,
     wrapper.logCorrelationId('service.support.user.getRole', async (correlationId, userId) => {

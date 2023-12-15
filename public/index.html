@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Inventio</title>
+    <title>Compositio</title>
     <link href="./favicon.ico" rel="icon">
     <style>
         :root {
@@ -220,6 +220,7 @@
     const historyEl = document.getElementById('history');
     const paramsManager = (() => {
         const pageManager = (() => {
+            const _title = document.title;
             let _page = '';
             const get = () => ({page: _page});
             const set = ({page}) => {
@@ -231,21 +232,21 @@
                             partDetailsEl.classList.add('_hidden');
                             partHistoryEl.classList.add('_hidden');
                             partQueryEl.classList.remove('_hidden');
-                            document.title = 'Inventio';
+                            document.title = _title;
                             success = true;
                             break;
                         case HISTORY_PAGE:
                             partQueryEl.classList.add('_hidden');
                             partDetailsEl.classList.add('_hidden');
                             partHistoryEl.classList.remove('_hidden');
-                            document.title = 'Inventio – History';
+                            document.title = `${_title} – History`;
                             success = true;
                             break;
                         case DETAILS_PAGE:
                             partHistoryEl.classList.add('_hidden');
                             partQueryEl.classList.add('_hidden');
                             partDetailsEl.classList.remove('_hidden');
-                            document.title = 'Inventio – Details';
+                            document.title = `${_title} – Details`;
                     }
                     if (success) {
                         pageEl.innerText = page;
@@ -465,7 +466,7 @@
         const {query} = dataManager.get();
         disableManager.disable([sessionIdEl, queryEl, submitQueryEl]);
         const start = Date.now();
-        const formattedElapsed = () => `${Math.round((Date.now() - start) / 1000)}s`;
+        const formattedElapsed = () => `${Math.round((Date.now() - start) / SECOND)}s`;
         try {
             const resp = await fetch('/api/query', {
                 method: 'POST',
@@ -493,6 +494,11 @@
                                 case 'task':
                                     partialReply = '';
                                     progress += `\ndone – ${data_.kind}\n`
+                                    onQueryResp({data}, progress, formattedElapsed());
+                                    break;
+                                case 'task-start':
+                                    partialReply = '';
+                                    progress += `\nstart – ${data_.kind}\n`
                                     onQueryResp({data}, progress, formattedElapsed());
                                     break;
                                 case 'reply':
@@ -611,6 +617,7 @@
         }
     });
     const stringify = (v) => typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+    const SECOND = 1000;
     const explainError = (e) => ({error: `${e.name || ''}: ${e.message || ''}`, stack: e.stack || ''});
 </script>
 </body>
