@@ -9,6 +9,7 @@ import consolidate from './handler/consolidate.js';
 import introspect from './handler/introspect.js';
 import imagine from './handler/imagine.js';
 import research from './handler/research.js';
+import uule from './service/support/uule.js';
 import common from './common.js';
 import strictParse from './util/strictParse.js';
 import log from './util/log.js';
@@ -34,6 +35,21 @@ const RENDER_INDEX_HTML = wrapper.cache(
         return s.replace('{{ PAGE }}', page)
             .replace('{{ VERSION }}', version);
     });
+
+const init = async () => {
+    await uule.init();
+};
+
+const initMiddleware = (() => {
+    let hasInited = false;
+    return (req, res, next) => {
+        if (!hasInited) {
+            hasInited = true;
+            init().catch((_) => ''); // not wait
+        }
+        next();
+    };
+})();
 
 const versionMiddleware = (req, res, next) => {
     res.setHeader('X-App-Version', VERSION);
@@ -133,9 +149,9 @@ app.use('/favicon.ico', express.static('./public/favicon.ico'));
 app.use(versionMiddleware);
 app.use(common.API_ROUTE_PREFIX, correlationIdMiddleware, express.json());
 app.use(common.INTERNAL_ROUTE_PREFIX, internalApiAuthMiddleware, correlationIdMiddleware, express.json());
-app.get(common.INDEX_ROUTE, indexHandler);
-app.get(common.DETAILS_ROUTE, detailsHandler);
-app.get(common.HISTORY_ROUTE, historyHandler);
+app.get(common.INDEX_ROUTE, initMiddleware, indexHandler);
+app.get(common.DETAILS_ROUTE, initMiddleware, detailsHandler);
+app.get(common.HISTORY_ROUTE, initMiddleware, historyHandler);
 app.post(common.QUERY_API_ROUTE, ipMiddleware, wrapHandlerSse(common.QUERY_API_ROUTE, query.externalQuery));
 app.post(common.DETAILS_API_ROUTE, wrapHandler(common.DETAILS_API_ROUTE, details.externalDetails));
 app.post(common.HISTORY_API_ROUTE, wrapHandler(common.HISTORY_API_ROUTE, history.externalHistory));
