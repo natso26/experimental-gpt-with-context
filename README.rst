@@ -1,5 +1,5 @@
-Inventio
-========
+Compositio
+==========
 
 .. image:: https://raw.githubusercontent.com/natso26/experimental-gpt-with-context/master/public/mascot.jpeg
    :alt: mascot
@@ -51,6 +51,8 @@ Mechanism
 6. Knowledge. Wolfram|Alpha, Google search engine results pages.
 
 7. Research. Scrape web pages.
+
+8. Revision. Improve action input.
 
 
 Engineering
