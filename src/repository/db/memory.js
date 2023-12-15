@@ -138,7 +138,7 @@ const longTermSearch = wrapper.logCorrelationId('repository.db.memory.longTermSe
         }
         const rawLvlData = snapshot.docs.map(doc => doc.data());
         const lvlData = rawLvlData.filter(({[INDEX_FIELD]: index}) =>
-            index > rawLvlData[rawLvlData.length - 1][INDEX_FIELD] - lookbackLimit);
+            index > rawLvlData.at(-1)[INDEX_FIELD] - lookbackLimit);
         data.push(...lvlData);
     }
     const getConsolidations = () => data.map(({[CONSOLIDATION_FIELD]: consolidation}) => consolidation);

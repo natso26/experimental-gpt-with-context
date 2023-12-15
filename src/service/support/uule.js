@@ -7,7 +7,10 @@ import wrapper from '../../util/wrapper.js';
 
 const canonicalNameCache = cache.lruTtl(100, 30 * 60 * 1000);
 let locationGrid = {};
-setTimeout(() => serp.getLocations(uuid.v4(), getLocationsCallback).catch((_) => ''), 0);
+
+const init = async () => {
+    await serp.getLocations(uuid.v4(), getLocationsCallback).catch((_) => '');
+};
 
 const getCanonicalName = (() => {
     const f = wrapper.cache(canonicalNameCache, (correlationId, lat, lon, warnings) => `${lat},${lon}`,
@@ -38,6 +41,7 @@ const getLocationsCallback = wrapper.logCorrelationId('service.support.uule.getL
         grid[k].push(loc);
     }
     locationGrid = grid;
+    canonicalNameCache.clear();
 });
 
 const findBestLocation = (correlationId, lat, lon, scoreFn) => {
@@ -71,5 +75,6 @@ const distSq = (x0, y0, x1, y1) => {
 const scoreFn = (dSq, reach) => dSq > .5 ? 0 : (reach + 1) / (dSq || 1e-10);
 
 export default {
+    init,
     getCanonicalName,
 };
