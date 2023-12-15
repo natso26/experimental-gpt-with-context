@@ -227,7 +227,7 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
         data: {
             input,
             tokenCounts: {
-                input: inputTokenCount,
+                ...(!inputTokenCount ? {} : {input: inputTokenCount}),
             },
             usage,
             cost: common.CHAT_COST(usage),

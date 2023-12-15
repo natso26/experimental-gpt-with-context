@@ -1,4 +1,5 @@
 import log from './log.js';
+import time from './time.js';
 import error from './error.js';
 
 const retry = (onError, fn) => async (...args) => {
@@ -21,11 +22,11 @@ const logCorrelationId = (name, fn) => async (correlationId, ...args) => {
     const start = Date.now();
     try {
         const ret = await fn(correlationId, ...args);
-        const elapsed = (Date.now() - start) / 1000;
+        const elapsed = (Date.now() - start) / time.SECOND;
         log.log(`[Done] ${name}, elapsed: ${elapsed.toFixed(3)} s`, {correlationId, elapsed});
         return ret;
     } catch (e) {
-        const elapsed = (Date.now() - start) / 1000;
+        const elapsed = (Date.now() - start) / time.SECOND;
         log.log(`[Failed] ${name}, elapsed: ${elapsed.toFixed(3)} s`,
             {correlationId, elapsed, ...error.explain(e)});
         throw e;

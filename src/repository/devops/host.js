@@ -1,10 +1,11 @@
 import cloudrun from '@google-cloud/run';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
+import time from '../../util/time.js';
 import error from '../../util/error.js';
 
 const CLOUD_RUN_SERVICES_CLIENT_CALL_OPTIONS = {
-    timeout: strictParse.int(process.env.CLOUD_RUN_SERVICES_CLIENT_TIMEOUT_SECS) * 1000,
+    timeout: strictParse.int(process.env.CLOUD_RUN_SERVICES_CLIENT_TIMEOUT_SECS) * time.SECOND,
     maxRetries: strictParse.int(process.env.CLOUD_RUN_SERVICES_CLIENT_RETRY_COUNT),
 };
 const ENV_INFO = (() => {
