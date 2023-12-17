@@ -51,9 +51,9 @@ const revise = wrapper.logCorrelationId('service.active.revision.revise', async 
 });
 
 const cleanRevision = (() => {
-    const CLEAN_REGEXP = /^[^:]*internal[^:]+query[^:]*: *"(.*)" *$/i; // Refine the internal query to: "..."
+    const UNWRAP_REGEXP = /^[^:]*internal[^:]+query[^:]*: *"(.*)" *$/i; // Refine the internal query to: "..."
     return (revision) => {
-        const match = CLEAN_REGEXP.exec(revision);
+        const match = UNWRAP_REGEXP.exec(revision);
         if (!match) return revision;
         else return match[1];
     };
