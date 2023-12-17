@@ -1,12 +1,17 @@
 import fetch_ from '../util/fetch.js';
 import log from '../util/log.js';
 
-const checkRespOk = async (correlationId, logFn, errorMsg, resp) => {
+const checkRespOk = async (correlationId, logFn, errorMsg, resp, cause = null) => {
     if (!resp.ok) {
         const msg = errorMsg(resp);
         const body = await fetch_.parseRespBody(resp);
         logFn(msg, {correlationId, body});
-        throw new Error(msg);
+        const cause_ = cause?.(body);
+        if (cause_) {
+            throw new Error(msg, {cause: cause_});
+        } else {
+            throw new Error(msg);
+        }
     }
 };
 

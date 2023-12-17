@@ -19,7 +19,7 @@ const MODEL_PROMPT = (promptOptions, history, actions, query, recursedNote, recu
     + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     + (recursedQuery === query ? '' : `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`)
-    + `\n${recursedQuery === query ? 'come up with' : 'improve or restate'} internal recursed query, not for user`;
+    + `\n${recursedQuery === query ? 'come up with' : 'improve or restate'} internal recursed query, for search engine`;
 const REVISION_TOKEN_COUNT_LIMIT = strictParse.int(process.env.REVISE_REVISION_TOKEN_COUNT_LIMIT);
 
 const revise = wrapper.logCorrelationId('service.active.revision.revise', async (correlationId, docId, query, recursedNote, recursedQuery, history, actions, promptOptions) => {
@@ -53,9 +53,15 @@ const revise = wrapper.logCorrelationId('service.active.revision.revise', async 
 const cleanRevision = (() => {
     const UNWRAP_REGEXP = /^[^:]*internal[^:]+query[^:]*: *"(.*)" *$/i; // Refine the internal query to: "..."
     return (revision) => {
-        const match = UNWRAP_REGEXP.exec(revision);
-        if (!match) return revision;
-        else return match[1];
+        let r = revision.split('\n').at(-1).trim();
+        const match = UNWRAP_REGEXP.exec(r);
+        r = !match ? revision : match[1];
+        if (r[0] === '"' && r.at(-1) === '"') r = r.slice(1, -1);
+        r = r.trim();
+        if (['.', '?'].includes(r.at(-1))) r = r.slice(0, -1);
+        if (r.toLowerCase().startsWith('search for ')) r = r.slice(11).trim();
+        if (r.toLowerCase().startsWith('please provide ')) r = r.slice(15).trim();
+        return r;
     };
 })();
 

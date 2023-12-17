@@ -173,7 +173,6 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     const usages = [];
     const elapsedFunctionCalls = [];
     const functionCalls = [];
-    const cleanedFunctionCalls = [];
     const actionsShortCircuitHook = common.shortCircuitAutocompleteContentHook(
         correlationId, SHORT_CIRCUIT_TO_ACTION_OVERLAPPING_TOKENS);
     let reply = '';
@@ -216,17 +215,15 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             }
             const revisionData = await revise(
                 correlationId, docId, query, kind, recursedNextNote, recursedNextQuery, getHistoryCached, actionsForRevision, promptOptions, warnings);
-            revisedLocalFunctionCalls.push({revisedRecursedQuery: revisionData.reply});
             if (revisionData.reply) {
                 usages.push({iter: i, subIter: j, step: 'revision', ...revisionData.usage});
                 elapsedLocalFunctionCallRevisions.push({subIter: j, ...revisionData.timeStats});
             }
             const recursedNextQuery_ = revisionData.reply || recursedNextQuery;
-            // NB: check revised against unrevised
-            if (cleanedFunctionCalls.some((calls) => calls.some(({args}) =>
+            revisedLocalFunctionCalls.push({revisedRecursedQuery: recursedNextQuery_});
+            if (functionCalls.some(({v: calls}) => calls.some(({args, revisedRecursedQuery}) =>
                 args[MODEL_FUNCTION_KIND_ARG_NAME] === kind
-                && args[MODEL_FUNCTION_RECURSED_NOTE_ARG_NAME] === recursedNextNote
-                && args[MODEL_FUNCTION_RECURSED_QUERY_ARG_NAME] === recursedNextQuery_))) {
+                && revisedRecursedQuery === recursedNextQuery_))) {
                 log.log(`query: iter ${i}: function call: duplicate with previous iters`,
                     {correlationId, docId, i, args});
                 continue;
@@ -323,7 +320,6 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             revisions: elapsedLocalFunctionCallRevisions,
         });
         functionCalls.push({v: localFunctionCalls.map((v, j) => ({...v, ...revisedLocalFunctionCalls[j]}))});
-        cleanedFunctionCalls.push(cleanedLocalFunctionCalls);
         await Promise.all(localActions_.map(
             ({reply}) => actionsShortCircuitHook.add(reply)));
         if (!localActions_.length) {

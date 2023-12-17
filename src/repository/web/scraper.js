@@ -19,7 +19,7 @@ const extract = wrapper.logCorrelationId('repository.web.scraper.extract', async
         wait: WAIT.toString(),
         url,
     })}`, {}, TIMEOUT), RETRY_429_BACKOFFS);
-    await common.checkRespOk(correlationId, log.log, (resp) => `zenrows api error, status: ${resp.status}, url: ${url}`, resp);
+    await common.checkRespOk(correlationId, log.log, (resp) => `zenrows api error, status: ${resp.status}, url: ${url}`, resp, errorCause);
     const rawData = await resp.text();
     const root = htmlParser.parse(rawData, {
         blockTextElements: {
@@ -33,6 +33,16 @@ const extract = wrapper.logCorrelationId('repository.web.scraper.extract', async
         textData,
     };
 });
+
+const errorCause = (() => {
+    // https://www.zenrows.com/docs/api-error-codes
+    // common causes: 400, premium proxy required; 422, pdf file; 404, not found
+    const CODES = ['REQS002', 'RESP001', 'RESP002'];
+    return (body) => {
+        if (CODES.includes(body.code)) return {noRetry: true};
+        else return null;
+    };
+})();
 
 const readTexts = (node) => {
     if (node.nodeType === 3) { // text
