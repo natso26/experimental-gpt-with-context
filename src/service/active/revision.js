@@ -22,7 +22,8 @@ const MODEL_PROMPT = (promptOptions, history, actions, query, recursedNote, recu
     + `\n${recursedQuery === query ? 'come up with' : 'improve or restate'} internal recursed query, for search engine`;
 const REVISION_TOKEN_COUNT_LIMIT = strictParse.int(process.env.REVISE_REVISION_TOKEN_COUNT_LIMIT);
 
-const revise = wrapper.logCorrelationId('service.active.revision.revise', async (correlationId, docId, query, recursedNote, recursedQuery, history, actions, promptOptions) => {
+const revise = wrapper.logCorrelationId('service.active.revision.revise', async (correlationId, docId, queryInfo, history, actions, promptOptions) => {
+    const {query, recursedNote, recursedQuery} = queryInfo;
     const warnings = common.warnings();
     const prompt = MODEL_PROMPT(
         promptOptions, history, actions, query, recursedNote, recursedQuery);
@@ -59,8 +60,10 @@ const cleanRevision = (() => {
         if (r[0] === '"' && r.at(-1) === '"') r = r.slice(1, -1);
         r = r.trim();
         if (['.', '?'].includes(r.at(-1))) r = r.slice(0, -1);
+        if (r.toLowerCase().startsWith('please ')) r = r.slice(7).trim();
         if (r.toLowerCase().startsWith('search for ')) r = r.slice(11).trim();
-        if (r.toLowerCase().startsWith('please provide ')) r = r.slice(15).trim();
+        if (r.toLowerCase().startsWith('provide ')) r = r.slice(8).trim();
+        if (r.toLowerCase().startsWith('information on ')) r = r.slice(15).trim();
         return r;
     };
 })();
