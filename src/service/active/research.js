@@ -39,9 +39,10 @@ const ANSWER_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_ANSWER_TOK
 const SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS = strictParse.int(process.env.RESEARCH_SHORT_CIRCUIT_TO_ANSWER_OVERLAPPING_TOKENS);
 const CONCLUSION_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_CONCLUSION_TOKEN_COUNT_LIMIT);
 
-const research = wrapper.logCorrelationId('service.active.research.research', async (correlationId, userId, sessionId, options, query, recursedNote, recursedQuery) => {
+const research = wrapper.logCorrelationId('service.active.research.research', async (correlationId, userId, sessionId, options, queryInfo) => {
     log.log('research: parameters',
-        {correlationId, userId, sessionId, options, query, recursedNote, recursedQuery});
+        {correlationId, userId, sessionId, options, queryInfo});
+    const {query, recursedNote, backupRecursedQuery, recursedQuery} = queryInfo;
     const warnings = common.warnings();
     const ipGeolocateTask = commonActive.ipGeolocate(correlationId, options, 'research');
     const uuleCanonicalNameTask = commonActive.uuleCanonicalName(correlationId, ipGeolocateTask, warnings, 'research');
@@ -51,8 +52,19 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, recursedNote, recursedQuery);
     const uuleCanonicalName = await uuleCanonicalNameTask;
-    const {data: search} = await common.serpSearchWithRetry(correlationId, recursedQuery, uuleCanonicalName || null);
-    const urls = !search ? [] : serp.getOrganicLinks(search);
+    const getUrls = async (query) => {
+        const {data: search} = await common.serpSearchWithRetry(correlationId, query, uuleCanonicalName || null);
+        return !search ? [] : serp.getOrganicLinks(search);
+    };
+    const urls = combineUrls(await Promise.all([
+        getUrls(recursedQuery),
+        (async () => {
+            if (backupRecursedQuery === recursedQuery) {
+                return [];
+            }
+            return await getUrls(backupRecursedQuery);
+        })(),
+    ]));
     log.log('research: urls', {correlationId, docId, urls});
     if (!urls.length) {
         return {
@@ -234,6 +246,22 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
             warnings: warnings.get(),
         },
     };
+};
+
+const combineUrls = (a, b) => {
+    const o = [];
+    const seen = new Set();
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        if (i < a.length && !seen.has(a[i])) {
+            o.push(a[i]);
+            seen.add(a[i]);
+        }
+        if (i < b.length && !seen.has(b[i])) {
+            o.push(b[i]);
+            seen.add(b[i]);
+        }
+    }
+    return o;
 };
 
 export default {
