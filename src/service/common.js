@@ -82,7 +82,7 @@ const serpSearchWithRetry = wrapper.retry((e, cnt, correlationId) => {
 
 const scraperExtractWithRetry = wrapper.retry((e, cnt, correlationId) => {
     log.log(`scraper extract repository failed, retry count: ${cnt}`, {correlationId, cnt, ...error.explain(e)});
-    return cnt < SCRAPER_EXTRACT_RETRY_COUNT;
+    return !e.cause?.noRetry && cnt < SCRAPER_EXTRACT_RETRY_COUNT;
 }, scraper.extract);
 
 const shortCircuitAutocompleteContentHook = (correlationId, prefixTokenCount) => {
