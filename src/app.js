@@ -43,13 +43,13 @@ const init = async () => {
 
 const initMiddleware = (() => {
     let hasInited = false;
-    return (req, res, next) => {
+    return common.asyncMiddleware(async (req, res, next) => {
         if (!hasInited) {
             hasInited = true;
-            init().catch((_) => ''); // not wait
+            await init().catch((_) => '');
         }
         next();
-    };
+    });
 })();
 
 const versionMiddleware = (req, res, next) => {

@@ -14,7 +14,7 @@ const MODEL_ANSWER_PROMPT = (promptOptions, input, query, recursedNote, recursed
     common.MODEL_PROMPT_CORE_MSG
     + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
     + `\n${common.MODEL_PROMPT_OPTIONS_PART(promptOptions)}`
-    + `\ninput: ${input}`
+    + `\ninternal input: ${input}`
     + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`
@@ -23,7 +23,7 @@ const MODEL_CONCLUSION_PROMPT = (promptOptions, answers, query, recursedNote, re
     common.MODEL_PROMPT_CORE_MSG
     + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
     + `\n${common.MODEL_PROMPT_OPTIONS_PART(promptOptions)}`
-    + `\nanswers: ${JSON.stringify(answers)}`
+    + `\ninternal answers: ${JSON.stringify(answers)}`
     + `\nquery: ${JSON.stringify(query)}`
     + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
     + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`

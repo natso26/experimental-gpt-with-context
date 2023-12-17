@@ -608,7 +608,7 @@ const getHistory = async (correlationId, docId) => {
 const revise = async (correlationId, docId, query, kind, recursedNextNote, recursedNextQuery, getHistory, actions, promptOptions, warnings) => {
     if (kind !== MODEL_FUNCTION_KIND_REPLY) {
         try {
-            const history = await getHistory();
+            const {history} = await getHistory();
             const data = await revision.revise(
                 correlationId, docId, query, recursedNextNote, recursedNextQuery, history, actions, promptOptions);
             if (data.warnings) {

@@ -493,12 +493,12 @@
                             switch (data_.event) {
                                 case 'task':
                                     partialReply = '';
-                                    progress += `\ndone – ${data_.kind}\n`
+                                    progress += `\n${data_.kind} – done\n`
                                     onQueryResp({data}, progress, formattedElapsed());
                                     break;
                                 case 'task-start':
                                     partialReply = '';
-                                    progress += `\nstart – ${data_.kind}\n`
+                                    progress += `\n${data_.kind} – start\n`
                                     onQueryResp({data}, progress, formattedElapsed());
                                     break;
                                 case 'reply':

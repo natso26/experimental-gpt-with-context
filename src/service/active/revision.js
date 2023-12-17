@@ -31,13 +31,14 @@ const revise = wrapper.logCorrelationId('service.active.revision.revise', async 
     const {content: revision_, finishReason, usage} = await common.chatWithRetry(
         correlationId, null, prompt, REVISION_TOKEN_COUNT_LIMIT, null, null, warnings);
     const elapsedChat = chatTimer.elapsed();
+    log.log('revise: revision', {correlationId, docId, revision: revision_});
     let revision;
     // NB: case directly reply instead of revise query
     if (finishReason === chat.FINISH_REASON_LENGTH) {
-        log.log('revise: revision too long; use original', {correlationId, docId, revision: revision_});
+        log.log('revise: revision too long; use original', {correlationId, docId});
         revision = recursedQuery;
     } else {
-        revision = revision_;
+        revision = cleanRevision(revision_);
     }
     return {
         reply: revision,
@@ -48,6 +49,15 @@ const revise = wrapper.logCorrelationId('service.active.revision.revise', async 
         warnings: warnings.get(),
     };
 });
+
+const cleanRevision = (() => {
+    const UNWRAP_REGEXP = /^[^:]*internal[^:]+query[^:]*: *"(.*)" *$/i; // Refine the internal query to: "..."
+    return (revision) => {
+        const match = UNWRAP_REGEXP.exec(revision);
+        if (!match) return revision;
+        else return match[1];
+    };
+})();
 
 export default {
     MODEL_PROMPT_KIND_FIELD,
