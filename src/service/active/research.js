@@ -56,7 +56,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         const {data: search} = await common.serpSearchWithRetry(correlationId, query, uuleCanonicalName || null);
         return !search ? [] : serp.getOrganicLinks(search);
     };
-    const urls = combineUrls(await Promise.all([
+    const urls = combineUrls(...await Promise.all([
         getUrls(recursedQuery),
         (async () => {
             if (backupRecursedQuery === recursedQuery) {
