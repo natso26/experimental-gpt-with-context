@@ -1,3 +1,4 @@
+import commonWeb from './common.js';
 import common from '../common.js';
 import common_ from '../../common.js';
 import fetch_ from '../../util/fetch.js';
@@ -30,10 +31,11 @@ const getLocations = wrapper.cache(cache.lruTtl(1, time.HOUR), (correlationId, c
 
 const search = wrapper.cache(cache.lruTtl(100, 15 * time.MINUTE), (correlationId, query, location) => `${query}|${location}`,
     wrapper.logCorrelationId('repository.web.serp.search', async (correlationId, query, location) => {
+        const query_ = commonWeb.cleanQuotes(query);
         const resp = await fetch_.withTimeout(`${SEARCH_URL}?${new URLSearchParams({
             api_key: common_.SECRETS.SERPAPI_API_KEY,
             engine: 'google',
-            q: query,
+            q: query_,
             hl: 'en',
             ...(!location ? {} : {location}),
             no_cache: true,
