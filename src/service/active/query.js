@@ -71,6 +71,7 @@ const QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_QUERY_TOKEN_CO
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
 const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
 const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_INFO_TRUNCATION_TOKEN_COUNT);
+const SEARCH_MIN_RESULTS_COUNT = strictParse.int(process.env.QUERY_SEARCH_MIN_RESULTS_COUNT);
 const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_TRUNCATION_TOKEN_COUNT);
 const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
 const MAX_ITERS_WITH_ACTIONS = strictParse.int(process.env.QUERY_MAX_ITERS_WITH_ACTIONS);
@@ -101,7 +102,7 @@ const MAX_SCHEDULED_IMAGINATION_DELAY = strictParse.int(process.env.QUERY_MAX_SC
 const query = wrapper.logCorrelationId('service.active.query.query', async (correlationId, onPartial, userId, sessionId, options, queryInfo) => {
     log.log('query: parameters',
         {correlationId, userId, sessionId, options, queryInfo});
-    const {query, recursedNote, backupRecursedQuery, recursedQuery} = queryInfo;
+    const {query, recursedNote, recursedQuery} = queryInfo;
     const warnings = common.warnings();
     const baseUrlTask = host.getBaseUrl(correlationId).then((baseUrl) => {
         log.log('query: base url', {correlationId, baseUrl});
@@ -116,23 +117,23 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     const {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, query, recursedNote, recursedQuery);
     const [
-        {info, infoTokenCount},
-        {search, searchTokenCount},
+        {info, infoTokenCount, selectedQ: infoSelectedQ},
+        {search, searchTokenCount, selectedQ: searchSelectedQ},
         {actionHistory},
         {queryEmbedding, shortTermContext, longTermContext},
     ] = await Promise.all([
         // NB: do info and search only on recursion
         (async () => {
             if (!recursedQuery) {
-                return {info: '', infoTokenCount: 0};
+                return {info: '', infoTokenCount: 0, selectedQ: null};
             }
-            return await getInfo(correlationId, docId, options, recursedQuery, warnings);
+            return await getInfo(correlationId, docId, options, queryInfo, warnings);
         })(),
         (async () => {
             if (!recursedQuery) {
-                return {search: '', searchTokenCount: 0};
+                return {search: '', searchTokenCount: 0, selectedQ: null};
             }
-            return await getSearch(correlationId, docId, recursedQuery, uuleCanonicalNameTask, warnings);
+            return await getSearch(correlationId, docId, queryInfo, uuleCanonicalNameTask, warnings);
         })(),
         getActionHistory(correlationId, docId, actionLvl),
         (async () => {
@@ -352,7 +353,9 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         correlationId,
         options: {options, promptOptions},
         ...(!info ? {} : {info}),
+        ...(!infoSelectedQ ? {} : {infoSelectedQ}),
         ...(!search ? {} : {search}),
+        ...(!searchSelectedQ ? {} : {searchSelectedQ}),
         actionHistory,
         shortTermContext,
         longTermContext,
@@ -443,41 +446,86 @@ const getTokenCounts = async (correlationId, docId, query, recursedNote, recurse
     return {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getInfo = async (correlationId, docId, options, recursedQuery, warnings) => {
+const getInfo = async (correlationId, docId, options, queryInfo, warnings) => {
     let info = '';
     let infoTokenCount = 0;
+    let selectedQ = null;
     try {
-        const {pods: rawInfo} = await common.wolframAlphaQueryWithRetry(correlationId, options.ip, recursedQuery);
-        if (rawInfo.length) {
+        const doInfo = async (q) => {
+            try {
+                const {pods} = await common.wolframAlphaQueryWithRetry(correlationId, options.ip, q);
+                return !pods.length ? null : pods;
+            } catch (e) {
+                warnings('query: wolfram alpha query failed', {correlationId, docId, q}, e);
+                return null;
+            }
+        };
+        const candidateQueries =
+            [...new Set([queryInfo.recursedQuery, queryInfo.backupRecursedQuery, queryInfo.query]
+                .filter((q) => q))];
+        let info_ = null;
+        for (const q of candidateQueries) {
+            const infoResult = await doInfo(q);
+            if (infoResult) {
+                info_ = infoResult;
+                selectedQ = q;
+                break;
+            }
+        }
+        if (info_) {
             const {truncated, tokenCount} = await tokenizer.truncate(
-                correlationId, JSON.stringify(rawInfo), INFO_TRUNCATION_TOKEN_COUNT);
+                correlationId, JSON.stringify(info_), INFO_TRUNCATION_TOKEN_COUNT);
             info = truncated;
             infoTokenCount = Math.min(tokenCount, INFO_TRUNCATION_TOKEN_COUNT);
         }
     } catch (e) {
-        warnings('query: wolfram alpha query failed', {correlationId, docId, recursedQuery}, e);
+        warnings('query: get info failed', {correlationId, docId, queryInfo}, e);
     }
-    log.log('query: info', {correlationId, docId, info, infoTokenCount});
-    return {info, infoTokenCount};
+    log.log('query: info', {correlationId, docId, info, infoTokenCount, selectedQ});
+    return {info, infoTokenCount, selectedQ};
 };
 
-const getSearch = async (correlationId, docId, recursedQuery, uuleCanonicalNameTask, warnings) => {
+const getSearch = async (correlationId, docId, queryInfo, uuleCanonicalNameTask, warnings) => {
     let search = '';
     let searchTokenCount = 0;
+    let selectedQ = null;
     try {
         const uuleCanonicalName = await uuleCanonicalNameTask;
-        const {data: rawSearch} = await common.serpSearchWithRetry(correlationId, recursedQuery, uuleCanonicalName || null);
-        if (rawSearch) {
+        const doSearch = async (q) => {
+            try {
+                const {data: search, resultsCount} =
+                    await common.serpSearchWithRetry(correlationId, q, uuleCanonicalName || null);
+                return {search, resultsCount};
+            } catch (e) {
+                warnings('query: serp search failed', {correlationId, docId, q}, e);
+                return {search: null, resultsCount: 0};
+            }
+        };
+        const candidateQueries =
+            [...new Set([queryInfo.recursedQuery, queryInfo.backupRecursedQuery, queryInfo.query]
+                .filter((q) => q))];
+        const searchResults = [];
+        for (const q of candidateQueries) {
+            const searchResult = await doSearch(q);
+            searchResults.push({...searchResult, q});
+            if (searchResult.resultsCount >= SEARCH_MIN_RESULTS_COUNT) {
+                break;
+            }
+        }
+        const {search: search_, q: q_} = findMax(searchResults, (searchResult) => searchResult.resultsCount) ||
+        {search: null, resultsCount: 0, q: null};
+        if (search_) {
             const {truncated, tokenCount} = await tokenizer.truncate(
-                correlationId, JSON.stringify(rawSearch), SEARCH_TRUNCATION_TOKEN_COUNT);
+                correlationId, JSON.stringify(search_), SEARCH_TRUNCATION_TOKEN_COUNT);
             search = truncated;
             searchTokenCount = Math.min(tokenCount, SEARCH_TRUNCATION_TOKEN_COUNT);
+            selectedQ = q_;
         }
     } catch (e) {
-        warnings('query: serp search failed', {correlationId, docId, recursedQuery}, e);
+        warnings('query: get search failed', {correlationId, docId, queryInfo}, e);
     }
-    log.log('query: search', {correlationId, docId, search, searchTokenCount});
-    return {search, searchTokenCount};
+    log.log('query: search', {correlationId, docId, search, searchTokenCount, selectedQ});
+    return {search, searchTokenCount, selectedQ};
 };
 
 const getActionHistory = async (correlationId, docId, actionLvl) => {
@@ -764,6 +812,19 @@ const triggerBackgroundTasks = async (correlationId, docId, index, baseUrlTask, 
     } catch (e) {
         warnings('query: trigger background tasks failed', {correlationId, docId}, e);
     }
+};
+
+const findMax = (arr, fn) => {
+    let maxE = null;
+    let maxV = null;
+    for (const e of arr) {
+        const v = fn(e);
+        if (maxV === null || v > maxV) {
+            maxE = e;
+            maxV = v;
+        }
+    }
+    return maxE;
 };
 
 export default {
