@@ -18,8 +18,8 @@ const getLocations = wrapper.cache(cache.lruTtl(1, time.HOUR), (correlationId, c
             await common.checkRespOk(correlationId, log.log, (resp) => `serapi locations api error, status: ${resp.status}`, resp);
             return resp;
         })(LOCATIONS_URL, {}, 30 * time.SECOND);
-        const locations_ = await resp.json();
-        const locations = locations_.map(({canonical_name, target_type, reach, gps}) =>
+        let locations = await resp.json(); // NB: overwrite `locations` frees ~100 MB
+        locations = locations.map(({canonical_name, target_type, reach, gps}) =>
             ({canonicalName: canonical_name, targetType: target_type, reach, lat: gps?.[1], lon: gps?.[0]}))
             .filter(({reach, lat, lon}) => reach !== undefined && lat !== undefined && lon !== undefined);
         const l = locations.length;
