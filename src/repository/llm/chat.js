@@ -23,7 +23,7 @@ const _DEV_FLAG_NOT_STREAM = false;
 const FINISH_REASON_LENGTH = 'length';
 
 const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, input, maxTokens, shortCircuitHook, fn, warnings) => {
-    const resp = await common.retry429(correlationId, () => fetch_.withTimeout(URL, {
+    const resp = await common.retryWithBackoff(correlationId, () => fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -54,7 +54,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             frequency_penalty: 0,
             presence_penalty: 0,
         }),
-    }, TIMEOUT), RETRY_429_BACKOFFS);
+    }, TIMEOUT), backoff);
     log.log('chat completions api: resp headers', {correlationId, headers: Object.fromEntries(resp.headers)});
     await common.checkRespOk(correlationId, warnings, (resp) => `chat completions api error, status: ${resp.status}`, resp);
     const timer = time.timer();
@@ -226,6 +226,12 @@ const _notStreamReadBody = async (correlationId, resp) => {
     const content = content_ || '';
     const toolCalls = (toolCalls_ || []).map(({function: {name, arguments: args}}) => ({name, args}));
     return {content, toolCalls};
+};
+
+const backoff = (cnt, resp) => {
+    if (resp.status !== 429) return null;
+    else if (cnt >= RETRY_429_BACKOFFS.length) return null;
+    else return RETRY_429_BACKOFFS[cnt];
 };
 
 export default {

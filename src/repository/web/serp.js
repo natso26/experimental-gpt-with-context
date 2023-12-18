@@ -28,32 +28,33 @@ const getLocations = wrapper.cache(cache.lruTtl(1, time.HOUR), (correlationId, c
         return locations;
     }));
 
-const search = wrapper.logCorrelationId('repository.web.serp.search', async (correlationId, query, location) => {
-    const resp = await fetch_.withTimeout(`${SEARCH_URL}?${new URLSearchParams({
-        api_key: common_.SECRETS.SERPAPI_API_KEY,
-        engine: 'google',
-        q: query,
-        hl: 'en',
-        ...(!location ? {} : {location}),
-    })}`, {}, TIMEOUT);
-    await common.checkRespOk(correlationId, log.log, (resp) => `serpapi search api error, status: ${resp.status}, query: ${query}`, resp);
-    const rawData = await resp.json();
-    if (rawData.error) {
+const search = wrapper.cache(cache.lruTtl(100, 15 * time.MINUTE), (correlationId, query, location) => `${query}|${location}`,
+    wrapper.logCorrelationId('repository.web.serp.search', async (correlationId, query, location) => {
+        const resp = await fetch_.withTimeout(`${SEARCH_URL}?${new URLSearchParams({
+            api_key: common_.SECRETS.SERPAPI_API_KEY,
+            engine: 'google',
+            q: query,
+            hl: 'en',
+            ...(!location ? {} : {location}),
+            no_cache: true,
+        })}`, {}, TIMEOUT);
+        await common.checkRespOk(correlationId, log.log, (resp) => `serpapi search api error, status: ${resp.status}, query: ${query}`, resp);
+        const rawData = await resp.json();
+        if (rawData.error) {
+            return {
+                data: null,
+                resultsCount: 0,
+            };
+        }
+        const data = pruneResp(rawData);
+        const resultsCount = rawData.search_information?.total_results || 0;
         return {
-            data: null,
+            data,
+            resultsCount,
         };
-    }
-    const data = pruneResp(rawData);
-    return {
-        data,
-    };
-});
+    }));
 
-const getOrganicLinks = (data) => {
-    const {organic_results: rawOrganicResults} = data;
-    const organicResults = rawOrganicResults || [];
-    return organicResults.map(({link}) => link);
-};
+const getOrganicLinks = (data) => data?.organic_results?.map(({link}) => link) || [];
 
 const pruneResp = (() => {
     const EXCLUDE_KEYS = ['place_id', 'lsig', 'chips', 'position', 'block_position', 'cached_page_link', 'related_pages_link'];

@@ -15,19 +15,21 @@ const checkRespOk = async (correlationId, logFn, errorMsg, resp, cause = null) =
     }
 };
 
-const retry429 = async (correlationId, fn, backoffs) => {
-    for (const backoff of backoffs) {
+const retryWithBackoff = async (correlationId, fn, backoff) => {
+    let cnt = 0;
+    while (true) {
         const resp = await fn();
-        if (resp.status !== 429) {
+        const backoff_ = backoff(cnt, resp);
+        if (backoff_ === null) {
             return resp;
         }
-        log.log(`retry429: wait ${backoff}ms`, {correlationId, backoff});
-        await new Promise((resolve) => setTimeout(resolve, backoff));
+        log.log(`retryWithBackoff: wait ${backoff_}ms`, {correlationId, backoff: backoff_});
+        await new Promise((resolve) => setTimeout(resolve, backoff_));
+        cnt++;
     }
-    return await fn();
 };
 
 export default {
     checkRespOk,
-    retry429,
+    retryWithBackoff,
 };

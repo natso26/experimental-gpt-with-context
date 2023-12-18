@@ -31,6 +31,7 @@ const MODEL_CONCLUSION_PROMPT = (promptOptions, answers, query, recursedNote, re
 const ACTION_KIND_ANSWER = 'research-answer';
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
 const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
+const SEARCH_MIN_RESULTS_COUNT = strictParse.int(process.env.RESEARCH_SEARCH_MIN_RESULTS_COUNT);
 const URL_COUNT = strictParse.int(process.env.RESEARCH_URL_COUNT);
 const RETRY_NEW_URL_COUNT = strictParse.int(process.env.RESEARCH_RETRY_NEW_URL_COUNT);
 const INPUT_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.RESEARCH_INPUT_TRUNCATION_TOKEN_COUNT);
@@ -52,17 +53,13 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, recursedNote, recursedQuery);
     const uuleCanonicalName = await uuleCanonicalNameTask;
-    const getUrls = async (query) => {
-        const {data: search} = await common.serpSearchWithRetry(correlationId, query, uuleCanonicalName || null);
-        return !search ? [] : serp.getOrganicLinks(search);
-    };
     const urls = combineUrls(...await Promise.all([
-        getUrls(recursedQuery),
+        getUrls(correlationId, docId, uuleCanonicalName, recursedQuery, warnings),
         (async () => {
             if (backupRecursedQuery === recursedQuery) {
                 return [];
             }
-            return await getUrls(backupRecursedQuery);
+            return await getUrls(correlationId, docId, uuleCanonicalName, backupRecursedQuery, warnings);
         })(),
     ]));
     log.log('research: urls', {correlationId, docId, urls});
@@ -200,6 +197,25 @@ const getTokenCounts = async (correlationId, docId, recursedNote, recursedQuery)
             ` ${recursedNoteTokenCount} > ${RECURSED_NOTE_TOKEN_COUNT_LIMIT} or ${recursedQueryTokenCount} > ${RECURSED_QUERY_TOKEN_COUNT_LIMIT}`);
     }
     return {recursedNoteTokenCount, recursedQueryTokenCount};
+};
+
+const getUrls = async (correlationId, docId, uuleCanonicalName, q, warnings) => {
+    try {
+        const {data: search, resultsCount} =
+            await common.serpSearchWithRetry(correlationId, q, uuleCanonicalName || null);
+        if (!search) {
+            log.log('research: get urls: no result', {correlationId, docId, q});
+            return [];
+        }
+        if (resultsCount < SEARCH_MIN_RESULTS_COUNT) {
+            log.log('research: get urls: results count too low', {correlationId, docId, q, resultsCount});
+            return [];
+        }
+        return serp.getOrganicLinks(search);
+    } catch (e) {
+        warnings.strong('research: get urls: failed', {correlationId, docId, q}, e);
+        return [];
+    }
 };
 
 const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuery, url, promptOptions) => {

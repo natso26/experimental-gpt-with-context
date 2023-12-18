@@ -45,8 +45,31 @@ const cache = (cache, getKey, fn) => async (...args) => {
     }
 };
 
+const suppressError = (isSuppress, fn) => {
+    const o = async (...args) => {
+        try {
+            return {v: await fn(...args)};
+        } catch (e) {
+            if (isSuppress(e)) {
+                return {e};
+            } else {
+                throw e;
+            }
+        }
+    };
+    o.unwrap = ({v, e}) => {
+        if (e) {
+            throw e;
+        } else {
+            return v;
+        }
+    };
+    return o;
+};
+
 export default {
     retry,
     logCorrelationId,
     cache,
+    suppressError,
 };
