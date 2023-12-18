@@ -34,7 +34,7 @@ const getCanonicalName = (() => {
 
 // cover 1 degree diameter by 9 cells of half-degree grid
 const getLocationsCallback = wrapper.logCorrelationId('service.support.uule.getLocationsCallback', async (correlationId, locations) => {
-    let grid = {};
+    const grid = {};
     for (const loc_ of locations) {
         const loc = {...loc_, lat: number.round(loc_.lat, 5), lon: number.round(loc_.lon, 5)};
         const k = gridKey(loc.lat, loc.lon);
