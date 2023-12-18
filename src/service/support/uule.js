@@ -42,7 +42,6 @@ const getLocationsCallback = wrapper.logCorrelationId('service.support.uule.getL
         grid[k].push(loc);
     }
     locationGrid = grid;
-    grid = null;
     canonicalNameCache.clear();
 });
 
