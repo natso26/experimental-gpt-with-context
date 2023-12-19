@@ -74,7 +74,7 @@ const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_INFO_TRUNC
 const SEARCH_MIN_RESULTS_COUNT = strictParse.int(process.env.QUERY_SEARCH_MIN_RESULTS_COUNT);
 const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_TRUNCATION_TOKEN_COUNT);
 const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
-const MAX_ITERS_WITH_ACTIONS = strictParse.int(process.env.QUERY_MAX_ITERS_WITH_ACTIONS);
+const MAX_ITERS_WITH_ACTIONS = strictParse.json(process.env.QUERY_MAX_ITERS_WITH_ACTIONS);
 const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_COUNT);
 const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
 const CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_LINEAR_DECAY);
@@ -112,7 +112,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     const uuleCanonicalNameTask = commonActive.uuleCanonicalName(correlationId, ipGeolocateTask, warnings, 'query');
     const promptOptionsTask = commonActive.promptOptions(correlationId, options, ipGeolocateTask, warnings, 'query');
     const docId = common.DOC_ID.from(userId, sessionId);
-    const actionLvl = !recursedQuery ? 0 : 1;
+    const actionLvl = !recursedQuery ? 0 : queryInfo.recursedQueryStack.length + 1;
     const timer = time.timer();
     const {queryTokenCount, recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, query, recursedNote, recursedQuery);
@@ -178,8 +178,9 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     const actionsShortCircuitHook = common.shortCircuitAutocompleteContentHook(
         correlationId, SHORT_CIRCUIT_TO_ACTION_OVERLAPPING_TOKENS);
     let reply = '';
-    let isFinalIter = !!recursedQuery; // NB: recurse once
     let i = 0;
+    const maxItersWithActions = MAX_ITERS_WITH_ACTIONS[actionLvl] || 0;
+    let isFinalIter = !maxItersWithActions;
     while (true) {
         const localPrompt = MODEL_PROMPT(
             promptOptions, info, search, actionHistory, [...actionsForPrompt].reverse(), longTermContext, shortTermContext, query, recursedNote, recursedQuery);
@@ -256,6 +257,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 }
                 const nextQueryInfo = {
                     query,
+                    recursedQueryStack: !recursedQuery ? [] : [...queryInfo.recursedQueryStack, recursedQuery],
                     recursedNote: recursedNextNote,
                     backupRecursedQuery: recursedNextQuery,
                     recursedQuery: recursedNextQuery_,
@@ -343,7 +345,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             log.log(`query: iter ${i}: function call: has reply action`, {correlationId, docId, i});
             isFinalIter = true;
         }
-        if (i >= MAX_ITERS_WITH_ACTIONS - 1) {
+        if (i >= maxItersWithActions - 1) {
             log.log(`query: iter ${i}: function call: at max iters`, {correlationId, docId, i});
             isFinalIter = true;
         }
