@@ -53,6 +53,16 @@ const revise = wrapper.logCorrelationId('service.active.revision.revise', async 
 
 const cleanRevision = (() => {
     const UNWRAP_REGEXP = /^[^:]*internal[^:]+query[^:]*: *"(.*)" *$/i; // Refine the internal query to: "..."
+    const _cutInfo = (s, s2 = null) => [s, (s2 ?? s).length];
+    const CUT_INFOS = [
+        _cutInfo('please '),
+        _cutInfo('provide '),
+        _cutInfo('search for '),
+        _cutInfo('research on '),
+        _cutInfo('research the ', 'research '),
+        _cutInfo('investigate the ', 'investigate '),
+        _cutInfo('information on '),
+    ];
     return (revision) => {
         let r = revision.split('\n').at(-1).trim();
         const match = UNWRAP_REGEXP.exec(r);
@@ -60,10 +70,9 @@ const cleanRevision = (() => {
         if (r[0] === '"' && r.at(-1) === '"') r = r.slice(1, -1);
         r = r.trim();
         if (['.', '?'].includes(r.at(-1))) r = r.slice(0, -1);
-        if (r.toLowerCase().startsWith('please ')) r = r.slice(7).trim();
-        if (r.toLowerCase().startsWith('search for ')) r = r.slice(11).trim();
-        if (r.toLowerCase().startsWith('provide ')) r = r.slice(8).trim();
-        if (r.toLowerCase().startsWith('information on ')) r = r.slice(15).trim();
+        for (const [s, l] of CUT_INFOS) {
+            if (r.toLowerCase().startsWith(s)) r = r.slice(l).trimStart();
+        }
         return r;
     };
 })();
