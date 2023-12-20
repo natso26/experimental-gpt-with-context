@@ -1,5 +1,5 @@
-Compositio
-==========
+Ai-chan
+=======
 
 .. image:: https://raw.githubusercontent.com/natso26/experimental-gpt-with-context/master/public/mascot.jpeg
    :alt: mascot
