@@ -4,6 +4,8 @@ const isNonEmptyString = (v) => typeof v === 'string' && Boolean(v);
 
 const isInteger = (v) => typeof v === 'number' && v % 1 === 0;
 
+const isArrayOf = (f, v) => Array.isArray(v) && v.every(f);
+
 const isUuidV4 = (v) => typeof v === 'string' && UUID_V4_REGEXP.test(v);
 
 const isTimezoneOffsetOption = (v) => v === null || v === 'auto' || isInteger(v);
@@ -11,6 +13,7 @@ const isTimezoneOffsetOption = (v) => v === null || v === 'auto' || isInteger(v)
 export default {
     isNonEmptyString,
     isInteger,
+    isArrayOf,
     isUuidV4,
     isTimezoneOffsetOption,
 };

@@ -9,7 +9,6 @@ import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
 import time from '../../util/time.js';
 
-const ACTION_LVL = 1; // NB: research is immediate subtask
 const MODEL_ANSWER_PROMPT = (promptOptions, input, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_CORE_MSG
     + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
@@ -49,11 +48,12 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const uuleCanonicalNameTask = commonActive.uuleCanonicalName(correlationId, ipGeolocateTask, warnings, 'research');
     const promptOptionsTask = commonActive.promptOptions(correlationId, options, ipGeolocateTask, warnings, 'research');
     const docId = common.DOC_ID.from(userId, sessionId);
+    const actionLvl = queryInfo.recursedQueryStack.length + 1;
     const timer = time.timer();
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, recursedNote, recursedQuery);
     const uuleCanonicalName = await uuleCanonicalNameTask;
-    const urls = combineUrls(...await Promise.all([
+    const urls_ = combineUrls(...await Promise.all([
         getUrls(correlationId, docId, uuleCanonicalName, recursedQuery, warnings),
         (async () => {
             if (backupRecursedQuery === recursedQuery) {
@@ -62,7 +62,8 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             return await getUrls(correlationId, docId, uuleCanonicalName, backupRecursedQuery, warnings);
         })(),
     ]));
-    log.log('research: urls', {correlationId, docId, urls});
+    const urls = urls_.filter((url) => !url.endsWith('.pdf'));
+    log.log('research: urls', {correlationId, docId, urls, urls_});
     if (!urls.length) {
         return {
             state: 'no-urls',
@@ -122,7 +123,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
                 url,
                 timeStats,
             };
-            const {index, timestamp} = await memory.addAction(correlationId, docId, ACTION_LVL, {
+            const {index, timestamp} = await memory.addAction(correlationId, docId, actionLvl, {
                 [common.KIND_FIELD]: ACTION_KIND_ANSWER,
                 [common.RECURSED_NOTE_FIELD]: recursedNote || '',
                 [common.RECURSED_QUERY_FIELD]: recursedQuery,

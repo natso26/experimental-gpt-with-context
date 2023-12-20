@@ -46,7 +46,9 @@ const externalQuery = wrapper.logCorrelationId('handler.query.externalQuery', as
                 break;
         }
     };
-    const queryInfo = {query, recursedNote: null, backupRecursedQuery: null, recursedQuery: null};
+    const queryInfo = {
+        query, recursedQueryStack: null, recursedNote: null, backupRecursedQuery: null, recursedQuery: null,
+    };
     const ret = await query_.query(correlationId, onPartial_, userId, sessionId, options, queryInfo);
     if (!isDev) {
         const {reply} = ret;
@@ -59,12 +61,13 @@ const externalQuery = wrapper.logCorrelationId('handler.query.externalQuery', as
 const internalQuery = wrapper.logCorrelationId('handler.query.internalQuery', async (correlationId, body) => {
     const {userId, sessionId, options, queryInfo} = body;
     const {timezoneOffset, ip} = options;
-    const {query, recursedNote, backupRecursedQuery, recursedQuery} = queryInfo;
+    const {query, recursedQueryStack, recursedNote, backupRecursedQuery, recursedQuery} = queryInfo;
     if (!common.isUuidV4(userId)
         || !common.isUuidV4(sessionId)
         || !common.isTimezoneOffsetOption(timezoneOffset)
         || !common.isNonEmptyString(ip)
         || !common.isNonEmptyString(query)
+        || !common.isArrayOf(common.isNonEmptyString, recursedQueryStack)
         || !(recursedNote === null || common.isNonEmptyString(recursedNote))
         || !common.isNonEmptyString(backupRecursedQuery)
         || !common.isNonEmptyString(recursedQuery)) {
