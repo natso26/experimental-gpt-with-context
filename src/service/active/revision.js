@@ -37,7 +37,7 @@ const revise = wrapper.logCorrelationId('service.active.revision.revise', async 
     // NB: case directly reply instead of revise query
     if (finishReason === chat.FINISH_REASON_LENGTH) {
         log.log('revise: revision too long; use original', {correlationId, docId});
-        revision = recursedQuery;
+        revision = cleanRevision(recursedQuery);
     } else {
         revision = cleanRevision(revision_);
     }
@@ -52,7 +52,7 @@ const revise = wrapper.logCorrelationId('service.active.revision.revise', async 
 });
 
 const cleanRevision = (() => {
-    const UNWRAP_REGEXP = /^[^:]*internal[^:]+query[^:]*: *"(.*)" *$/i; // Refine the internal query to: "..."
+    const UNWRAP_REGEXP = /^[^:]*(?:refine|internal|search)[^:]+query[^:]*: *"(.*)" *$/i; // e.g. Refine the internal query to: "..."
     const _cutInfo = (s, s2 = null) => [s, (s2 ?? s).length];
     const CUT_INFOS = [
         _cutInfo('please '),

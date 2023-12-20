@@ -225,18 +225,23 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             }
             const recursedNextQuery_ = revisionData.reply || recursedNextQuery;
             revisedLocalFunctionCalls.push({revisedRecursedQuery: recursedNextQuery_});
+            if (queryInfo.recursedQueryStack?.includes(recursedNextQuery_)) {
+                log.log(`query: iter ${i}, subiter ${j}: function call: duplicate with recursed query stack`,
+                    {correlationId, docId, i, j, args});
+                continue;
+            }
             if (functionCalls.some(({v: calls}) => calls.some(({args, revisedRecursedQuery}) =>
                 args[MODEL_FUNCTION_KIND_ARG_NAME] === kind
                 && revisedRecursedQuery === recursedNextQuery_))) {
-                log.log(`query: iter ${i}: function call: duplicate with previous iters`,
-                    {correlationId, docId, i, args});
+                log.log(`query: iter ${i}, subiter ${j}: function call: duplicate with previous iters`,
+                    {correlationId, docId, i, j, args});
                 continue;
             }
             if (actionHistory.some((action) =>
                 (recursedNextNote && action[MODEL_PROMPT_RECURSED_NOTE_FIELD] === recursedNextNote)
                 && action[MODEL_PROMPT_RECURSED_QUERY_FIELD] === recursedNextQuery_)) {
-                log.log(`query: iter ${i}: function call: duplicate with action history`,
-                    {correlationId, docId, i, args});
+                log.log(`query: iter ${i}, subiter ${j}: function call: duplicate with action history`,
+                    {correlationId, docId, i, j, args});
                 continue;
             }
             if (onPartial) {

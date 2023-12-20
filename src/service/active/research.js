@@ -53,7 +53,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, recursedNote, recursedQuery);
     const uuleCanonicalName = await uuleCanonicalNameTask;
-    const urls = combineUrls(...await Promise.all([
+    const urls_ = combineUrls(...await Promise.all([
         getUrls(correlationId, docId, uuleCanonicalName, recursedQuery, warnings),
         (async () => {
             if (backupRecursedQuery === recursedQuery) {
@@ -62,7 +62,8 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             return await getUrls(correlationId, docId, uuleCanonicalName, backupRecursedQuery, warnings);
         })(),
     ]));
-    log.log('research: urls', {correlationId, docId, urls});
+    const urls = urls_.filter((url) => !url.endsWith('.pdf'));
+    log.log('research: urls', {correlationId, docId, urls, urls_});
     if (!urls.length) {
         return {
             state: 'no-urls',
