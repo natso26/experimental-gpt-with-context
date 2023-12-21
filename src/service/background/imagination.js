@@ -62,7 +62,8 @@ const imagine = wrapper.logCorrelationId('service.background.imagination.imagine
         log.log('imagine: prompt', {correlationId, docId, prompt});
         const chatTimer = time.timer();
         const {content: imagination, usage} = await common.chatWithRetry(
-            correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
+            correlationId, null, prompt, {maxTokens: TOKEN_COUNT_LIMIT},
+            null, null, warnings);
         const elapsedChat = chatTimer.elapsed();
         const {embedding: imaginationEmbedding} = await common.embedWithRetry(correlationId, imagination);
         const extra = {

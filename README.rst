@@ -21,7 +21,7 @@ Sequence of ``(query, reply)`` with internal flow:
 
    knowledge
    |                     +--\
-   v                    |    v
+   v                     |   v
    [(query, reply) <-> action] <-> introspection
    ^                         ^     |
    |      /------------------+------

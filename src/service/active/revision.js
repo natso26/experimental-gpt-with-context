@@ -30,7 +30,8 @@ const revise = wrapper.logCorrelationId('service.active.revision.revise', async 
     log.log('revise: prompt', {correlationId, docId, prompt});
     const chatTimer = time.timer();
     const {content: revision_, finishReason, usage} = await common.chatWithRetry(
-        correlationId, null, prompt, REVISION_TOKEN_COUNT_LIMIT, null, null, warnings);
+        correlationId, null, prompt, {maxTokens: REVISION_TOKEN_COUNT_LIMIT},
+        null, null, warnings);
     const elapsedChat = chatTimer.elapsed();
     log.log('revise: revision', {correlationId, docId, revision: revision_});
     let revision;
@@ -56,6 +57,7 @@ const cleanRevision = (() => {
     const _cutInfo = (s, s2 = null) => [s, (s2 ?? s).length];
     const CUT_INFOS = [
         _cutInfo('please '),
+        _cutInfo('could you provide '),
         _cutInfo('provide '),
         _cutInfo('search for '),
         _cutInfo('research on '),

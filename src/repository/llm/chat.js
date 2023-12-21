@@ -22,7 +22,8 @@ const _DEV_FLAG_NOT_STREAM = false;
 })();
 const FINISH_REASON_LENGTH = 'length';
 
-const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, input, maxTokens, shortCircuitHook, fn, warnings) => {
+const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, input, chatOptions, shortCircuitHook, fn, warnings) => {
+    const {maxTokens, jsonMode} = chatOptions;
     const resp = await common.retryWithBackoff(correlationId, () => fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -32,6 +33,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         body: JSON.stringify({
             stream: !_DEV_FLAG_NOT_STREAM,
             model: MODEL,
+            ...(!jsonMode ? {} : {response_format: {type: 'json_object'}}),
             // NB: forego chat capabilities in favor of a single system message
             messages: [
                 {

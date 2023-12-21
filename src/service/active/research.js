@@ -9,6 +9,23 @@ import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
 import time from '../../util/time.js';
 
+const MODEL_SCORE_PROMPT_SITE_DATA = ({link = null, source = null, title = null, snippet = null}) => {
+    const o = {};
+    if (source) o.info = source;
+    if (link) o.url = link;
+    if (title) o.title = title;
+    if (snippet) o.content = snippet;
+    return o;
+};
+const MODEL_SCORE_PROMPT = (promptOptions, siteData, query, recursedNote, recursedQuery) =>
+    common.MODEL_PROMPT_CORE_MSG
+    + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
+    + `\n${common.MODEL_PROMPT_OPTIONS_PART(promptOptions)}`
+    + `\nsite data: ${JSON.stringify(siteData)}`
+    + `\nquery: ${JSON.stringify(query)}`
+    + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
+    + `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`
+    + `\nscore relevance of site, with JSON {reason, score}, range 0-10`;
 const MODEL_ANSWER_PROMPT = (promptOptions, input, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_CORE_MSG
     + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
@@ -31,6 +48,14 @@ const ACTION_KIND_ANSWER = 'research-answer';
 const RECURSED_NOTE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_NOTE_TOKEN_COUNT_LIMIT);
 const RECURSED_QUERY_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_RECURSED_QUERY_TOKEN_COUNT_LIMIT);
 const SEARCH_MIN_RESULTS_COUNT = strictParse.int(process.env.RESEARCH_SEARCH_MIN_RESULTS_COUNT);
+const SCORE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.RESEARCH_SCORE_TOKEN_COUNT_LIMIT);
+const SCORE_IDX_OVERRIDE_COUNT = strictParse.int(process.env.RESEARCH_SCORE_IDX_OVERRIDE_COUNT);
+const SITE_SCORE = (rand, score, idx) => {
+    if (idx < SCORE_IDX_OVERRIDE_COUNT) return 10 + SCORE_IDX_OVERRIDE_COUNT - idx;
+    if (score < 0) score = 0;
+    else if (score > 10) score = 10;
+    return score + rand * (10 - score);
+};
 const URL_COUNT = strictParse.int(process.env.RESEARCH_URL_COUNT);
 const RETRY_NEW_URL_COUNT = strictParse.int(process.env.RESEARCH_RETRY_NEW_URL_COUNT);
 const INPUT_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.RESEARCH_INPUT_TRUNCATION_TOKEN_COUNT);
@@ -53,20 +78,20 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const {recursedNoteTokenCount, recursedQueryTokenCount} =
         await getTokenCounts(correlationId, docId, recursedNote, recursedQuery);
     const uuleCanonicalName = await uuleCanonicalNameTask;
-    const urls_ = combineUrls(...await Promise.all([
-        getUrls(correlationId, docId, uuleCanonicalName, recursedQuery, warnings),
+    const sites_ = combineSites(...await Promise.all([
+        getSites(correlationId, docId, uuleCanonicalName, recursedQuery, warnings),
         (async () => {
             if (backupRecursedQuery === recursedQuery) {
                 return [];
             }
-            return await getUrls(correlationId, docId, uuleCanonicalName, backupRecursedQuery, warnings);
+            return await getSites(correlationId, docId, uuleCanonicalName, backupRecursedQuery, warnings);
         })(),
     ]));
-    const urls = urls_.filter((url) => !url.endsWith('.pdf'));
-    log.log('research: urls', {correlationId, docId, urls, urls_});
-    if (!urls.length) {
+    const sites = sites_.filter(({link}) => !link.endsWith('.pdf'));
+    log.log('research: sites', {correlationId, docId, sites, sites_});
+    if (!sites.length) {
         return {
-            state: 'no-urls',
+            state: 'no-sites',
             reply: null,
             options: {options},
             timeStats: {
@@ -76,7 +101,18 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         };
     }
     const promptOptions = await promptOptionsTask;
-    const answerTaskCount = Math.min(URL_COUNT, urls.length);
+    const scoreTimer = time.timer();
+    const scores_ = await Promise.all(sites.map((siteData, idx) => getSiteScore(
+        correlationId, docId, siteData, idx, queryInfo, promptOptions, warnings)
+        .then((o) => ({...o, ...siteData}))));
+    const elapsedScore = scoreTimer.elapsed();
+    const scoreUsages = scores_.map(({usage}) => usage);
+    const scores = scores_.map(({score}, idx) => SITE_SCORE(Math.random(), score, idx));
+    log.log('research: scores', {correlationId, docId, scores, scores_});
+    const urls = sites.map(({link}, idx) => ({link, score: scores[idx]}))
+        .sort(({score: a}, {score: b}) => b - a).map(({link}) => link);
+    log.log('research: urls', {correlationId, docId, urls});
+    const answerTaskCount = Math.min(URL_COUNT, sites.length);
     const answerCosts = [];
     let availableI = answerTaskCount;
     const rawAnswerTasks = [...Array(answerTaskCount).keys()].map((i) => (async () => {
@@ -86,7 +122,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         let data = null;
         for (let j = 0; j <= RETRY_NEW_URL_COUNT; j++) {
             const o = await getAnswer(
-                correlationId, docId, query, recursedNote, recursedQuery, urls[currI], promptOptions);
+                correlationId, docId, queryInfo, urls[currI], promptOptions);
             reply = o.reply;
             data = o.data;
             if (reply || availableI >= urls.length || j === RETRY_NEW_URL_COUNT) {
@@ -149,8 +185,11 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             state: 'no-answers',
             reply: null,
             options: {options, promptOptions},
+            scoreUsages,
+            cost: common.CHAT_COST.sum(scoreUsages.map(common.CHAT_COST)),
             timeStats: {
                 elapsed: timer.elapsed(),
+                elapsedScore,
             },
             warnings: warnings.get(),
         };
@@ -163,7 +202,8 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     log.log('research: conclusion prompt', {correlationId, docId, conclusionPrompt});
     const conclusionTimer = time.timer();
     const {content: conclusion, usage} = await common.chatWithRetry(
-        correlationId, null, conclusionPrompt, CONCLUSION_TOKEN_COUNT_LIMIT, answersShortCircuitHook, null, warnings);
+        correlationId, null, conclusionPrompt, {maxTokens: CONCLUSION_TOKEN_COUNT_LIMIT},
+        answersShortCircuitHook, null, warnings);
     const elapsedConclusion = conclusionTimer.elapsed();
     return {
         state: 'success',
@@ -175,9 +215,11 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             recursedQuery: recursedQueryTokenCount,
         },
         usage,
-        cost: common.CHAT_COST.sum([...answerCosts, common.CHAT_COST(usage)]),
+        scoreUsages,
+        cost: common.CHAT_COST.sum([...answerCosts, common.CHAT_COST(usage), ...scoreUsages.map(common.CHAT_COST)]),
         timeStats: {
             elapsed: timer.elapsed(),
+            elapsedScore,
             elapsedConclusion,
         },
         warnings: warnings.get(),
@@ -200,28 +242,54 @@ const getTokenCounts = async (correlationId, docId, recursedNote, recursedQuery)
     return {recursedNoteTokenCount, recursedQueryTokenCount};
 };
 
-const getUrls = async (correlationId, docId, uuleCanonicalName, q, warnings) => {
+const getSites = async (correlationId, docId, uuleCanonicalName, q, warnings) => {
     try {
         const {data: search, resultsCount} =
             await common.serpSearchWithRetry(correlationId, q, uuleCanonicalName || null);
         if (!search) {
-            log.log('research: get urls: no result', {correlationId, docId, q});
+            log.log('research: get sites: no result', {correlationId, docId, q});
             return [];
         }
         if (resultsCount < SEARCH_MIN_RESULTS_COUNT) {
-            log.log('research: get urls: results count too low', {correlationId, docId, q, resultsCount});
+            log.log('research: get sites: results count too low', {correlationId, docId, q, resultsCount});
             return [];
         }
         return serp.getOrganicLinks(search);
     } catch (e) {
-        warnings.strong('research: get urls: failed', {correlationId, docId, q}, e);
+        warnings.strong('research: get sites: failed', {correlationId, docId, q}, e);
         return [];
     }
 };
 
-const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuery, url, promptOptions) => {
+const getSiteScore = async (correlationId, docId, siteData, idx, queryInfo, promptOptions, warnings) => {
+    if (idx < SCORE_IDX_OVERRIDE_COUNT) {
+        return {score: null, reason: `score not used for idx ${idx}`, usage: chat.EMPTY_USAGE()};
+    }
+    const {query, recursedNote, recursedQuery} = queryInfo;
+    let score = null;
+    let reason = null;
+    let usage = chat.EMPTY_USAGE();
+    try {
+        const scorePrompt = MODEL_SCORE_PROMPT(
+            promptOptions, MODEL_SCORE_PROMPT_SITE_DATA(siteData), query, recursedNote, recursedQuery);
+        log.log('research: get site score: score prompt', {correlationId, docId, scorePrompt});
+        const {content: reply, usage: usage_} = await common.chatWithRetry(
+            correlationId, null, scorePrompt, {maxTokens: SCORE_TOKEN_COUNT_LIMIT, jsonMode: true},
+            null, null, warnings);
+        usage = usage_;
+        const {reason: reason_, score: score_} = JSON.parse(reply);
+        reason = reason_;
+        score = Number(score_) || null;
+    } catch (e) {
+        warnings('research: get site score: failed', {correlationId, docId, siteData, queryInfo}, e);
+    }
+    return {score, reason, usage};
+};
+
+const getAnswer = async (correlationId, docId, queryInfo, url, promptOptions) => {
     log.log('research: get answer: parameters',
-        {correlationId, docId, query, recursedNote, recursedQuery, url, promptOptions});
+        {correlationId, docId, queryInfo, url, promptOptions});
+    const {query, recursedNote, recursedQuery} = queryInfo;
     const warnings = common.warnings();
     let input = '';
     let reply = '';
@@ -242,14 +310,15 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
                 const answerPrompt = MODEL_ANSWER_PROMPT(promptOptions, input, query, recursedNote, recursedQuery);
                 log.log('research: get answer: answer prompt', {correlationId, docId, url, answerPrompt});
                 const {content: reply_, usage: usage_} = await common.chatWithRetry(
-                    correlationId, null, answerPrompt, ANSWER_TOKEN_COUNT_LIMIT, null, null, warnings);
+                    correlationId, null, answerPrompt, {maxTokens: ANSWER_TOKEN_COUNT_LIMIT},
+                    null, null, warnings);
                 reply = reply_;
                 usage = usage_;
             }
         }
     } catch (e) {
         warnings('research: get answer: failed',
-            {correlationId, docId, query, recursedNote, recursedQuery, url}, e);
+            {correlationId, docId, queryInfo, url}, e);
     }
     return {
         reply,
@@ -265,17 +334,17 @@ const getAnswer = async (correlationId, docId, query, recursedNote, recursedQuer
     };
 };
 
-const combineUrls = (a, b) => {
+const combineSites = (a, b) => {
     const o = [];
-    const seen = new Set();
+    const seenLinks = new Set();
     for (let i = 0; i < Math.max(a.length, b.length); i++) {
-        if (i < a.length && !seen.has(a[i])) {
+        if (i < a.length && !seenLinks.has(a[i].link)) {
             o.push(a[i]);
-            seen.add(a[i]);
+            seenLinks.add(a[i].link);
         }
-        if (i < b.length && !seen.has(b[i])) {
+        if (i < b.length && !seenLinks.has(b[i].link)) {
             o.push(b[i]);
-            seen.add(b[i]);
+            seenLinks.add(b[i].link);
         }
     }
     return o;
