@@ -188,7 +188,8 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
         const localChatTimer = time.timer();
         const {content: localReply, functionCalls: localFunctionCalls, usage: localUsage} = await common.chatWithRetry(
-            correlationId, onPartialChat, localPrompt, REPLY_TOKEN_COUNT_LIMIT, actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null, warnings);
+            correlationId, onPartialChat, localPrompt, {maxTokens: REPLY_TOKEN_COUNT_LIMIT},
+            actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null, warnings);
         elapsedChats.push(localChatTimer.elapsed());
         usages.push({iter: i, step: 'main', ...localUsage});
         if (!localFunctionCalls.length) {
@@ -287,6 +288,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         // NB: exclude data field due to firestore size limit
         const localActions = await Promise.all(rawLocalActionTasks.map((task) => task.then(async (res) => {
             const {reply, data, kind, recursedNextNote, backupRecursedNextQuery, recursedNextQuery} = res;
+            actionCosts.push(data?.cost || null);
             if (!reply || kind === MODEL_FUNCTION_KIND_REPLY) {
                 return {
                     reply,
@@ -314,7 +316,6 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                     {correlationId, docId, i, actionLvl}, e);
                 return {index: null, timestamp: null};
             });
-            actionCosts.push(data?.cost || null);
             return {
                 reply,
                 kind,

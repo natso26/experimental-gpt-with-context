@@ -45,7 +45,8 @@ const consolidate = wrapper.logCorrelationId('service.background.consolidation.c
         log.log('consolidate: prompt', {correlationId, docId, lvl, prompt});
         const chatTimer = time.timer();
         const {content: summary, usage} = await common.chatWithRetry(
-            correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
+            correlationId, null, prompt, {maxTokens: TOKEN_COUNT_LIMIT},
+            null, null, warnings);
         const elapsedChat = chatTimer.elapsed();
         const {embedding: summaryEmbedding} = await common.embedWithRetry(correlationId, summary);
         const extra = {

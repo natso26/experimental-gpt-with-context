@@ -51,7 +51,8 @@ const introspect = wrapper.logCorrelationId('service.background.introspection.in
     log.log('introspect: prompt', {correlationId, docId, prompt});
     const chatTimer = time.timer();
     const {content: introspection, usage} = await common.chatWithRetry(
-        correlationId, null, prompt, TOKEN_COUNT_LIMIT, null, null, warnings);
+        correlationId, null, prompt, {maxTokens: TOKEN_COUNT_LIMIT},
+        null, null, warnings);
     const elapsedChat = chatTimer.elapsed();
     const {embedding: introspectionEmbedding} = await common.embedWithRetry(correlationId, introspection);
     const extra = {

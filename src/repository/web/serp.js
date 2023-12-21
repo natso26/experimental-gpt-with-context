@@ -56,7 +56,8 @@ const search = wrapper.cache(cache.lruTtl(100, 15 * time.MINUTE), (correlationId
         };
     }));
 
-const getOrganicLinks = (data) => data?.organic_results?.map(({link}) => link) || [];
+const getOrganicLinks = (data) => data?.organic_results?.map(
+    ({link, source = null, title = null, snippet = null}) => ({link, source, title, snippet})) || [];
 
 const pruneResp = (() => {
     const EXCLUDE_KEYS = ['place_id', 'lsig', 'chips', 'position', 'block_position', 'cached_page_link', 'related_pages_link'];
