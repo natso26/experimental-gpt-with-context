@@ -138,6 +138,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         return {
             reply,
             data,
+            urlIdx: currI,
             url: urls[currI],
             timeStats: {
                 elapsed: answerTimer.elapsed(),
@@ -145,10 +146,12 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         };
     })());
     const answers = await Promise.all(rawAnswerTasks.map((task) => task.then(async (res) => {
-            const {reply, data, url, timeStats} = res;
+            const {reply, data, urlIdx, url, timeStats} = res;
+            answerCosts.push(data?.cost || null);
             if (!reply) {
                 return {
                     reply,
+                    urlIdx,
                     url,
                     timeStats,
                 };
@@ -156,6 +159,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
             const actiobDbExtra = {
                 correlationId,
                 ...data,
+                urlIdx,
                 url,
                 timeStats,
             };
@@ -168,9 +172,9 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
                 warnings.strong('research: add answer failed', {correlationId, docId}, e);
                 return {index: null, timestamp: null};
             });
-            answerCosts.push(data?.cost || null);
             return {
                 reply,
+                urlIdx,
                 url,
                 timeStats,
                 index,
@@ -179,7 +183,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
         })
     ));
     const answersForPrompt = answers.filter(({reply}) => reply)
-        .map(({reply}) => reply);
+        .sort(({urlIdx: a}, {urlIdx: b}) => a - b).map(({reply}) => reply);
     if (!answersForPrompt.length) {
         return {
             state: 'no-answers',
