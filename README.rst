@@ -50,7 +50,7 @@ Mechanism
 
 6. Knowledge. Wolfram|Alpha, Google search engine results pages.
 
-7. Research. Scrape web pages.
+7. Research. Score and scrape web pages.
 
 8. Revision. Improve action input.
 
@@ -63,7 +63,8 @@ Engineering
 - Security by manually added user IDs and secret key.
 - Consolidation, introspection by HTTP requests keeping Cloud Run awake.
 - Imagination by Cloud Scheduler polling.
-- VanillaJS frontend.
+- VanillaJS frontend, SSE.
+- Geolocation.
 
 
 Local run
