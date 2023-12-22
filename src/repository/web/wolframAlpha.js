@@ -13,7 +13,7 @@ const TIMEOUT = strictParse.int(process.env.WOLFRAM_ALPHA_QUERY_API_TIMEOUT_SECS
 
 const query = wrapper.cache(cache.lruTtl(100, 10 * time.MINUTE), (correlationId, ip, query) => `${ip}|${query}`,
     wrapper.logCorrelationId('repository.web.wolframAlpha.query', async (correlationId, ip, query) => {
-        const query_ = commonWeb.cleanQuotes(query);
+        const query_ = commonWeb.cleanQuery(query);
         const resp = await fetch_.withTimeout(`${URL}?${new URLSearchParams({
             appid: common_.SECRETS.WOLFRAM_ALPHA_APP_ID,
             format: 'plaintext',
