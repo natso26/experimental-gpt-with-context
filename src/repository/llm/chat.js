@@ -23,7 +23,7 @@ const _DEV_FLAG_NOT_STREAM = false;
 const FINISH_REASON_LENGTH = 'length';
 
 const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, input, chatOptions, shortCircuitHook, fn, warnings) => {
-    const {maxTokens, jsonMode} = chatOptions;
+    const {maxTokens, jsonMode, topLogprobs} = chatOptions;
     const resp = await common.retryWithBackoff(correlationId, () => fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -33,6 +33,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
         body: JSON.stringify({
             stream: !_DEV_FLAG_NOT_STREAM,
             model: MODEL,
+            ...(!topLogprobs && topLogprobs !== 0 ? {} : {logprobs: true, top_logprobs: topLogprobs}),
             ...(!jsonMode ? {} : {response_format: {type: 'json_object'}}),
             // NB: forego chat capabilities in favor of a single system message
             messages: [
@@ -66,7 +67,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     } catch (e) {
         log.log('chat completions api: problem destroying response body', {correlationId, ...error.explain(e)});
     }
-    const {content, toolCalls, finishReason} = data;
+    const {content, logprobs, toolCalls, finishReason} = data;
     const functionCalls = toolCalls.map((call) => {
         const {name, args: rawArgs} = call;
         try {
@@ -86,6 +87,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
     const usage = await tokenUsage(correlationId, input, fn, content, toolCalls, warnings);
     const out = {
         content,
+        logprobs,
         functionCalls,
         finishReason,
         usage,
@@ -99,6 +101,7 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
         return await _notStreamReadBody(correlationId, resp);
     }
     let content = '';
+    const logprobs = [];
     let toolCalls = [];
     let finishReason = null;
     let wantThrow = false;
@@ -111,10 +114,16 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
                 wantThrow = true;
                 throw new Error(msg);
             }
-            const {delta: {content: chunkContent, tool_calls: chunkToolCalls}, finish_reason: chunkFinishReason}
-                = chunkData.choices[0];
+            const {
+                delta: {content: chunkContent, tool_calls: chunkToolCalls},
+                logprobs: chunkLogprobs, finish_reason: chunkFinishReason,
+            } = chunkData.choices[0];
             if (chunkContent) {
                 content += chunkContent;
+                if (chunkLogprobs) {
+                    logprobs.push(...(chunkLogprobs.content || []).map(({logprob, top_logprobs}) =>
+                        ({logprob, topLogprobs: top_logprobs?.map(({logprob}) => logprob) || []})));
+                }
                 if (!chunkFinishReason && onPartial) {
                     onPartial({content});
                 }
@@ -156,7 +165,7 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
                 } else {
                     const isDone = processChunk(currChunk);
                     if (isDone) {
-                        return {content, toolCalls, finishReason};
+                        return {content, logprobs, toolCalls, finishReason};
                     }
                     const shortCircuit = shortCircuitHook?.({content, toolCalls});
                     if (shortCircuit) {
@@ -189,7 +198,7 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
             break;
         }
     }
-    return {content, toolCalls, finishReason};
+    return {content, logprobs, toolCalls, finishReason};
 };
 
 const tokenUsage = async (correlationId, input, fn, content, toolCalls, warnings) => {
