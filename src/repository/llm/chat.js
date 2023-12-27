@@ -23,7 +23,7 @@ const _DEV_FLAG_NOT_STREAM = false;
 const FINISH_REASON_LENGTH = 'length';
 
 const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, input, chatOptions, shortCircuitHook, fn, warnings) => {
-    const {maxTokens, topLogprobs, jsonMode} = chatOptions;
+    const {maxTokens, topLogprobs, jsonMode, disableFn} = chatOptions;
     const resp = await common.retryWithBackoff(correlationId, () => fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -51,6 +51,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
                     },
                 ],
             }),
+            ...(!disableFn ? {} : {tool_choice: 'none'}),
             temperature: 1,
             max_tokens: maxTokens,
             top_p: TOP_P,
