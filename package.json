@@ -1,6 +1,6 @@
 {
   "name": "experimental-gpt-with-context",
-  "version": "2023.12.22.1",
+  "version": "2023.12.27",
   "author": "Nat Sothanaphan - NatSo",
   "license": "MIT",
   "description": "",
@@ -18,7 +18,7 @@
     "express": "^4.18.2",
     "js-tiktoken": "^1.0.8",
     "node-fetch": "^3.3.2",
-    "node-html-parser": "^6.1.11",
+    "node-html-parser": "^6.1.12",
     "uuid": "^9.0.1",
     "yaml": "^2.3.4"
   }

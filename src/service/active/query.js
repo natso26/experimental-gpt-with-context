@@ -186,6 +186,9 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             promptOptions, info, search, actionHistory, [...actionsForPrompt].reverse(), longTermContext, shortTermContext, query, recursedNote, recursedQuery);
         prompts.push(localPrompt)
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
+        // if (!isFinalIter) {
+        //     await probeConfidence(correlationId, docId, localPrompt, warnings);
+        // }
         const localChatTimer = time.timer();
         const {content: localReply, functionCalls: localFunctionCalls, usage: localUsage} = await common.chatWithRetry(
             correlationId, onPartialChat, localPrompt, {maxTokens: REPLY_TOKEN_COUNT_LIMIT},
@@ -607,6 +610,14 @@ const getLongTermContext = async (correlationId, docId, doSim) => {
         }).reverse();
     log.log('query: long-term context', {correlationId, docId, longTermContext});
     return {longTermContext};
+};
+
+const probeConfidence = async (correlationId, docId, prompt, warnings) => {
+    const {logprobs, usage} = await common.chatWithRetry(
+        correlationId, null, prompt, {maxTokens: 1, topLogprobs: 1}, null, null, warnings);
+    const p = Math.exp((logprobs[0]?.topLogprobs || [])[0] || -Infinity);
+    log.log(`query: probe confidence: ${p}`, {correlationId, docId, p});
+    return {p, usage};
 };
 
 const cleanFunctionCall = async (correlationId, docId, i, call) => {
