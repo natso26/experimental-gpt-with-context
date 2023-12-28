@@ -193,7 +193,9 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
                 const {confidence, usage: localProbeUsage}
                     = await probeConfidence(correlationId, docId, localPrompt, warnings);
                 confidences.push(confidence);
-                usages.push({iter: i, step: 'main-probe', ...localProbeUsage});
+                if (confidence !== null) {
+                    usages.push({iter: i, step: 'main-probe', ...localProbeUsage});
+                }
             }
         })();
         const localChatTimer = time.timer();
@@ -622,11 +624,16 @@ const getLongTermContext = async (correlationId, docId, doSim) => {
 };
 
 const probeConfidence = async (correlationId, docId, prompt, warnings) => {
-    const {logprobs, usage} = await common.chatWithRetry(
-        correlationId, null, prompt, {maxTokens: 1, topLogprobs: 1}, null, null, warnings);
-    const confidence = Math.exp((logprobs[0]?.topLogprobs || [])[0] || -Infinity);
-    log.log(`query: probe confidence: ${confidence}`, {correlationId, docId, confidence});
-    return {confidence, usage};
+    try {
+        const {logprobs, usage} = await common.chatWithRetry(
+            correlationId, null, prompt, {maxTokens: 1, topLogprobs: 1}, null, null, warnings);
+        const confidence = Math.exp((logprobs[0]?.topLogprobs || [])[0] || -Infinity);
+        log.log(`query: probe confidence: ${confidence}`, {correlationId, docId, confidence});
+        return {confidence, usage};
+    } catch (e) {
+        warnings('query: probe confidence: failed', {correlationId, docId}, e);
+        return {confidence: null};
+    }
 };
 
 const cleanFunctionCall = async (correlationId, docId, i, call) => {
