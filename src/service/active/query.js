@@ -170,6 +170,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
     const actionsForRevision = [];
     const actionsForPrompt = [];
     const actionCosts = [];
+    const confidences = [];
     const prompts = [];
     const elapsedChats = [];
     const usages = [];
@@ -186,15 +187,22 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             promptOptions, info, search, actionHistory, [...actionsForPrompt].reverse(), longTermContext, shortTermContext, query, recursedNote, recursedQuery);
         prompts.push(localPrompt)
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
-        // if (!isFinalIter) {
-        //     await probeConfidence(correlationId, docId, localPrompt, warnings);
-        // }
+        // NB: cannot reliably use confidence value
+        const probeTask = (async () => {
+            if (!isFinalIter) {
+                const {confidence, usage: localProbeUsage}
+                    = await probeConfidence(correlationId, docId, localPrompt, warnings);
+                confidences.push(confidence);
+                usages.push({iter: i, step: 'main-probe', ...localProbeUsage});
+            }
+        })();
         const localChatTimer = time.timer();
         const {content: localReply, functionCalls: localFunctionCalls, usage: localUsage} = await common.chatWithRetry(
             correlationId, onPartialChat, localPrompt, {maxTokens: REPLY_TOKEN_COUNT_LIMIT},
             actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null, warnings);
         elapsedChats.push(localChatTimer.elapsed());
         usages.push({iter: i, step: 'main', ...localUsage});
+        await probeTask;
         if (!localFunctionCalls.length) {
             reply = localReply;
             break;
@@ -372,6 +380,7 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
         longTermContext,
         functionCalls,
         actions,
+        confidences,
         tokenCounts: {
             ...(!queryTokenCount ? {} : {query: queryTokenCount}),
             ...(!recursedNoteTokenCount ? {} : {recursedNote: recursedNoteTokenCount}),
@@ -615,9 +624,9 @@ const getLongTermContext = async (correlationId, docId, doSim) => {
 const probeConfidence = async (correlationId, docId, prompt, warnings) => {
     const {logprobs, usage} = await common.chatWithRetry(
         correlationId, null, prompt, {maxTokens: 1, topLogprobs: 1}, null, null, warnings);
-    const p = Math.exp((logprobs[0]?.topLogprobs || [])[0] || -Infinity);
-    log.log(`query: probe confidence: ${p}`, {correlationId, docId, p});
-    return {p, usage};
+    const confidence = Math.exp((logprobs[0]?.topLogprobs || [])[0] || -Infinity);
+    log.log(`query: probe confidence: ${confidence}`, {correlationId, docId, confidence});
+    return {confidence, usage};
 };
 
 const cleanFunctionCall = async (correlationId, docId, i, call) => {
