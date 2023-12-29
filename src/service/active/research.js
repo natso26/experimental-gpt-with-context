@@ -4,6 +4,7 @@ import serp from '../../repository/web/serp.js';
 import memory from '../../repository/db/memory.js';
 import commonActive from './common.js';
 import common from '../common.js';
+import number from '../../util/number.js';
 import strictParse from '../../util/strictParse.js';
 import log from '../../util/log.js';
 import wrapper from '../../util/wrapper.js';
@@ -54,7 +55,7 @@ const SITE_SCORE = (rand, score, idx) => {
     if (idx < SCORE_IDX_OVERRIDE_COUNT) return 10 + SCORE_IDX_OVERRIDE_COUNT - idx;
     if (score < 0) score = 0;
     else if (score > 10) score = 10;
-    return score + rand * (10 - score);
+    return Math.exp(Math.log(score / 10) * rand) * 10;
 };
 const URL_COUNT = strictParse.int(process.env.RESEARCH_URL_COUNT);
 const RETRY_NEW_URL_COUNT = strictParse.int(process.env.RESEARCH_RETRY_NEW_URL_COUNT);
@@ -283,7 +284,7 @@ const getSiteScore = async (correlationId, docId, siteData, idx, queryInfo, prom
         usage = usage_;
         const {reason: reason_, score: score_} = JSON.parse(reply);
         reason = reason_;
-        score = Number(score_) || null;
+        score = number.orNull(score_);
     } catch (e) {
         warnings('research: get site score: failed', {correlationId, docId, siteData, queryInfo}, e);
     }

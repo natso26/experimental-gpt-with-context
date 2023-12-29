@@ -53,7 +53,7 @@ const revise = wrapper.logCorrelationId('service.active.revision.revise', async 
 });
 
 const cleanRevision = (() => {
-    const UNWRAP_REGEXP = /^[^:]*(?:refine|internal|search)[^:]+query[^:]*: *"(.*)" *$/i; // e.g. Refine the internal query to: "..."
+    const UNWRAP_REGEXP = /^[^:]*(?:refine|internal|search)[^:]+query[^:]*:(.*)$/i; // e.g. Refine the internal query to: ...
     const _cutInfo = (s, s2 = null) => [s, (s2 ?? s).length];
     const CUT_INFOS = [
         _cutInfo('please '),
@@ -66,11 +66,10 @@ const cleanRevision = (() => {
         _cutInfo('information on '),
     ];
     return (revision) => {
-        let r = revision.split('\n').at(-1).trim();
+        let r = revision.split('\n').at(-1);
+        r = r.replaceAll('"', '').trim();
         const match = UNWRAP_REGEXP.exec(r);
-        r = !match ? revision : match[1];
-        if (r[0] === '"' && r.at(-1) === '"') r = r.slice(1, -1);
-        r = r.trim();
+        if (match) r = match[1].trim();
         if (['.', '?'].includes(r.at(-1))) r = r.slice(0, -1);
         for (const [s, l] of CUT_INFOS) {
             if (r.toLowerCase().startsWith(s)) r = r.slice(l).trimStart();
