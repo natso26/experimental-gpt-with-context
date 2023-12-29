@@ -280,7 +280,8 @@ const getSiteScore = async (correlationId, docId, siteData, idx, queryInfo, prom
             promptOptions, MODEL_SCORE_PROMPT_SITE_DATA(siteData), query, recursedNote, recursedQuery);
         log.log('research: get site score: score prompt', {correlationId, docId, scorePrompt});
         const {content: reply, usage: usage_} = await common.chatWithRetry(
-            correlationId, null, scorePrompt, {maxTokens: SCORE_TOKEN_COUNT_LIMIT, jsonMode: true},
+            correlationId, null, scorePrompt,
+            {maxTokens: SCORE_TOKEN_COUNT_LIMIT, jsonMode: true, customMode: 'scoring'},
             null, null, warnings);
         usage = usage_;
         const {reason: reason_, score: score_} = JSON.parse(reply);

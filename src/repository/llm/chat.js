@@ -13,6 +13,7 @@ import error from '../../util/error.js';
 const URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4-1106-preview';
 const TOP_P = strictParse.float(process.env.CHAT_COMPLETIONS_API_TOP_P);
+const TOP_P_FOR_SCORING = strictParse.float(process.env.CHAT_COMPLETIONS_API_TOP_P_FOR_SCORING);
 const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * time.SECOND;
 const RETRY_429_BACKOFFS = strictParse.json(process.env.CHAT_COMPLETIONS_API_RETRY_429_BACKOFFS_MS);
 const EMPTY_USAGE = () => ({inTokens: 0, outTokens: 0});
@@ -23,7 +24,18 @@ const _DEV_FLAG_NOT_STREAM = false;
 const FINISH_REASON_LENGTH = 'length';
 
 const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correlationId, onPartial, input, chatOptions, shortCircuitHook, fn, warnings) => {
-    const {maxTokens, topLogprobs, jsonMode, disableFn} = chatOptions;
+    const {maxTokens, topLogprobs, jsonMode, disableFn, customMode = ''} = chatOptions;
+    let topP;
+    switch (customMode) {
+        case 'scoring':
+            topP = TOP_P_FOR_SCORING;
+            break;
+        case '':
+            topP = TOP_P;
+            break;
+        default:
+            throw new Error(`chat completions api: invalid custom mode: ${customMode}`);
+    }
     const resp = await common.retryWithBackoff(correlationId, () => fetch_.withTimeout(URL, {
         method: 'POST',
         headers: {
@@ -54,7 +66,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             ...(!disableFn ? {} : {tool_choice: 'none'}),
             temperature: 1,
             max_tokens: maxTokens,
-            top_p: TOP_P,
+            top_p: topP,
             frequency_penalty: 0,
             presence_penalty: 0,
         }),
