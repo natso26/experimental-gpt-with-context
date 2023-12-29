@@ -2,6 +2,7 @@ import * as uuid from 'uuid';
 import revision from './revision.js';
 import host from '../../repository/devops/host.js';
 import tokenizer from '../../repository/llm/tokenizer.js';
+import chat from '../../repository/llm/chat.js';
 import memory from '../../repository/db/memory.js';
 import commonActive from './common.js';
 import common from '../common.js';
@@ -27,6 +28,15 @@ const MODEL_PROMPT_REPLY_FIELD = 'reply';
 const MODEL_PROMPT_SUMMARY_FIELD = 'summary';
 const MODEL_PROMPT_INTROSPECTION_FIELD = 'introspection';
 const MODEL_PROMPT_IMAGINATION_FIELD = 'imagination';
+const MODEL_CONFIDENCE_PROMPT = (promptOptions, actions, query, recursedNote, recursedQuery) =>
+    common.MODEL_PROMPT_CORE_MSG
+    + `\n${common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
+    + `\n${common.MODEL_PROMPT_OPTIONS_PART(promptOptions)}`
+    + (!actions.length ? '' : `\ninternal actions, unknown to user: ${JSON.stringify(actions)}`)
+    + `\nquery: ${JSON.stringify(query)}`
+    + (!recursedNote ? '' : `\ninternal recursed note: ${JSON.stringify(recursedNote)}`)
+    + ((!recursedQuery || recursedQuery === query) ? '' : `\ninternal recursed query: ${JSON.stringify(recursedQuery)}`)
+    + `\nestimate reply confidence as JSON {reason, confidence}, range 0-100`;
 const MODEL_PROMPT = (promptOptions, info, search, actionHistory, actions, longTermContext, shortTermContext, query, recursedNote, recursedQuery) =>
     common.MODEL_PROMPT_CORE_MSG
     + `\n${!recursedQuery ? common.MODEL_PROMPT_EXTERNAL_COMPONENT_MSG : common.MODEL_PROMPT_INTERNAL_COMPONENT_MSG}`
@@ -74,6 +84,18 @@ const INFO_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_INFO_TRUNC
 const SEARCH_MIN_RESULTS_COUNT = strictParse.int(process.env.QUERY_SEARCH_MIN_RESULTS_COUNT);
 const SEARCH_TRUNCATION_TOKEN_COUNT = strictParse.int(process.env.QUERY_SEARCH_TRUNCATION_TOKEN_COUNT);
 const ACTION_HISTORY_COUNT = strictParse.int(process.env.QUERY_ACTION_HISTORY_COUNT);
+const CONFIDENCE_TOKEN_COUNT_LIMIT = strictParse.int(process.env.QUERY_CONFIDENCE_TOKEN_COUNT_LIMIT);
+const CONFIDENCES_SHORT_CIRCUIT_CRITERION = (() => {
+    const f = strictParse.eval(process.env.QUERY_CONFIDENCES_SHORT_CIRCUIT_CRITERION);
+    return (correlationId, confidences, warnings) => {
+        try {
+            return f(confidences);
+        } catch (e) {
+            warnings.strong('query: confidences short-circuit criterion failed', {correlationId, confidences}, e);
+            return false;
+        }
+    };
+})();
 const MAX_ITERS_WITH_ACTIONS = strictParse.json(process.env.QUERY_MAX_ITERS_WITH_ACTIONS);
 const CTX_SCORE_FIRST_ITEMS_COUNT = strictParse.int(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_COUNT);
 const CTX_SCORE_FIRST_ITEMS_MAX_VAL = strictParse.float(process.env.QUERY_CTX_SCORE_FIRST_ITEMS_MAX_VAL);
@@ -187,24 +209,24 @@ const query = wrapper.logCorrelationId('service.active.query.query', async (corr
             promptOptions, info, search, actionHistory, [...actionsForPrompt].reverse(), longTermContext, shortTermContext, query, recursedNote, recursedQuery);
         prompts.push(localPrompt)
         log.log(`query: iter ${i}: prompt`, {correlationId, docId, i, localPrompt});
-        // NB: cannot reliably use confidence value
-        const probeTask = (async () => {
-            if (!isFinalIter) {
-                const {confidence, usage: localProbeUsage}
-                    = await probeConfidence(correlationId, docId, localPrompt, warnings);
-                confidences.push(confidence);
-                if (confidence !== null) {
-                    usages.push({iter: i, step: 'main-probe', ...localProbeUsage});
-                }
+        if (!isFinalIter) {
+            const {confidence, reason, usage: localEstConfidenceUsage}
+                = await estimateConfidence(correlationId, docId, queryInfo, i, actionsForPrompt, promptOptions, warnings);
+            log.log(`query: iter ${i}: estimate confidence: ${confidence}`,
+                {correlationId, docId, i, reason, confidence});
+            usages.push({iter: i, step: 'est-confidence', ...localEstConfidenceUsage});
+            confidences.push(confidence);
+            if (CONFIDENCES_SHORT_CIRCUIT_CRITERION(correlationId, confidences, warnings)) {
+                log.log(`query: iter ${i}: confidences short-circuit`, {correlationId, docId, i, confidences});
+                isFinalIter = true;
             }
-        })();
+        }
         const localChatTimer = time.timer();
         const {content: localReply, functionCalls: localFunctionCalls, usage: localUsage} = await common.chatWithRetry(
             correlationId, onPartialChat, localPrompt, {maxTokens: REPLY_TOKEN_COUNT_LIMIT},
             actionsShortCircuitHook, !isFinalIter ? MODEL_FUNCTION : null, warnings);
         elapsedChats.push(localChatTimer.elapsed());
         usages.push({iter: i, step: 'main', ...localUsage});
-        await probeTask;
         if (!localFunctionCalls.length) {
             reply = localReply;
             break;
@@ -623,17 +645,30 @@ const getLongTermContext = async (correlationId, docId, doSim) => {
     return {longTermContext};
 };
 
-const probeConfidence = async (correlationId, docId, prompt, warnings) => {
+const estimateConfidence = async (correlationId, docId, queryInfo, i, actions, promptOptions, warnings) => {
+    const {query, recursedNote, recursedQuery} = queryInfo;
+    let confidence = null;
+    let reason = null;
+    let usage = chat.EMPTY_USAGE();
     try {
-        const {logprobs, usage} = await common.chatWithRetry(
-            correlationId, null, prompt, {maxTokens: 1, topLogprobs: 1}, null, null, warnings);
-        const confidence = Math.exp((logprobs[0]?.topLogprobs || [])[0] || -Infinity);
-        log.log(`query: probe confidence: ${confidence}`, {correlationId, docId, confidence});
-        return {confidence, usage};
+        // NB: actions not reversed
+        const actions_ = actions.map(({[MODEL_PROMPT_REPLY_FIELD]: v}) => ({result: v}));
+        const confidencePrompt = MODEL_CONFIDENCE_PROMPT(
+            promptOptions, actions_, query, recursedNote, recursedQuery);
+        log.log(`query: iter ${i}: estimate confidence: confidence prompt`,
+            {correlationId, docId, i, confidencePrompt});
+        const {content: reply, usage: usage_} = await common.chatWithRetry(
+            correlationId, null, confidencePrompt, {maxTokens: CONFIDENCE_TOKEN_COUNT_LIMIT, jsonMode: true},
+            null, null, warnings);
+        usage = usage_;
+        const {reason: reason_, confidence: confidence_} = JSON.parse(reply);
+        reason = reason_;
+        const rawConfidence = number.orNull(confidence_);
+        if (rawConfidence !== null) confidence = rawConfidence / 100;
     } catch (e) {
-        warnings('query: probe confidence: failed', {correlationId, docId}, e);
-        return {confidence: null};
+        warnings(`query: iter ${i}: estimate confidence: failed`, {correlationId, docId, i}, e);
     }
+    return {confidence, reason, usage};
 };
 
 const cleanFunctionCall = async (correlationId, docId, i, call) => {

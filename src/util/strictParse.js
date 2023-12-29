@@ -17,8 +17,17 @@ const float = (s) => {
 const json = (s) => {
     try {
         return JSON.parse(s);
-    } catch (e) {
+    } catch (_) {
         throw new Error(`invalid json: ${s}`);
+    }
+};
+
+const eval_ = (s) => {
+    try {
+        if (!s) throw new Error('');
+        return eval(s);
+    } catch (_) {
+        throw new Error(`invalid eval: ${s}`);
     }
 };
 
@@ -26,4 +35,5 @@ export default {
     int,
     float,
     json,
+    eval: eval_,
 };
