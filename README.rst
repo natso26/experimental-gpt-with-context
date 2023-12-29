@@ -54,6 +54,8 @@ Mechanism
 
 8. Revision. Improve action input.
 
+9. Confidence. Assess if further action is needed.
+
 
 Engineering
 -----------
