@@ -231,6 +231,7 @@ const tokenUsage = async (correlationId, input, fn, content, toolCalls, warnings
     }
 };
 
+// (code out of sync with current version)
 const _notStreamReadBody = async (correlationId, resp) => {
     const data = await resp.json();
     log.log('chat completions api: data', {correlationId, data});
