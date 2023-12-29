@@ -110,6 +110,7 @@ const research = wrapper.logCorrelationId('service.active.research.research', as
     const scoreUsages = scores_.map(({usage}) => usage);
     const scores = scores_.map(({score}, idx) => SITE_SCORE(Math.random(), score, idx));
     log.log('research: scores', {correlationId, docId, scores, scores_});
+    // NB: sort is stable, which is needed in case of scores of 10
     const urls = sites.map(({link}, idx) => ({link, score: scores[idx]}))
         .sort(({score: a}, {score: b}) => b - a).map(({link}) => link);
     log.log('research: urls', {correlationId, docId, urls});
@@ -279,7 +280,8 @@ const getSiteScore = async (correlationId, docId, siteData, idx, queryInfo, prom
             promptOptions, MODEL_SCORE_PROMPT_SITE_DATA(siteData), query, recursedNote, recursedQuery);
         log.log('research: get site score: score prompt', {correlationId, docId, scorePrompt});
         const {content: reply, usage: usage_} = await common.chatWithRetry(
-            correlationId, null, scorePrompt, {maxTokens: SCORE_TOKEN_COUNT_LIMIT, jsonMode: true},
+            correlationId, null, scorePrompt,
+            {maxTokens: SCORE_TOKEN_COUNT_LIMIT, jsonMode: true, customMode: 'scoring'},
             null, null, warnings);
         usage = usage_;
         const {reason: reason_, score: score_} = JSON.parse(reply);

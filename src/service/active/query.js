@@ -658,7 +658,8 @@ const estimateConfidence = async (correlationId, docId, queryInfo, i, actions, p
         log.log(`query: iter ${i}: estimate confidence: confidence prompt`,
             {correlationId, docId, i, confidencePrompt});
         const {content: reply, usage: usage_} = await common.chatWithRetry(
-            correlationId, null, confidencePrompt, {maxTokens: CONFIDENCE_TOKEN_COUNT_LIMIT, jsonMode: true},
+            correlationId, null, confidencePrompt,
+            {maxTokens: CONFIDENCE_TOKEN_COUNT_LIMIT, jsonMode: true, customMode: 'scoring'},
             null, null, warnings);
         usage = usage_;
         const {reason: reason_, confidence: confidence_} = JSON.parse(reply);
