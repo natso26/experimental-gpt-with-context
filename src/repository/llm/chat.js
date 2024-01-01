@@ -14,7 +14,8 @@ const URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4-1106-preview';
 const TOP_P = strictParse.float(process.env.CHAT_COMPLETIONS_API_TOP_P);
 const TOP_P_FOR_SCORING = strictParse.float(process.env.CHAT_COMPLETIONS_API_TOP_P_FOR_SCORING);
-const TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_TIMEOUT_SECS) * time.SECOND;
+const RESP_TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_RESP_TIMEOUT_SECS) * time.SECOND;
+const STREAM_TIMEOUT = strictParse.int(process.env.CHAT_COMPLETIONS_API_STREAM_TIMEOUT_SECS) * time.SECOND;
 const RETRY_429_BACKOFFS = strictParse.json(process.env.CHAT_COMPLETIONS_API_RETRY_429_BACKOFFS_MS);
 const EMPTY_USAGE = () => ({inTokens: 0, outTokens: 0});
 const _DEV_FLAG_NOT_STREAM = false;
@@ -70,7 +71,7 @@ const chat = wrapper.logCorrelationId('repository.llm.chat.chat', async (correla
             frequency_penalty: 0,
             presence_penalty: 0,
         }),
-    }, TIMEOUT), backoff);
+    }, RESP_TIMEOUT), backoff);
     log.log('chat completions api: resp headers', {correlationId, headers: Object.fromEntries(resp.headers)});
     await common.checkRespOk(correlationId, warnings, (resp) => `chat completions api error, status: ${resp.status}`, resp);
     const timer = time.timer();
@@ -206,7 +207,7 @@ const streamReadBody = async (correlationId, onPartial, resp, timer, shortCircui
                 currChunk += line;
             }
         }
-        if (time.SECOND * timer.elapsed() > TIMEOUT) { // separate from req timeout
+        if (time.SECOND * timer.elapsed() > STREAM_TIMEOUT) {
             warnings.strong('chat completions api: timeout', {correlationId});
             break;
         }
