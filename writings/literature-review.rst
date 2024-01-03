@@ -30,6 +30,7 @@ Misc
 
 - https://arxiv.org/abs/2307.09009; suggests prompts are unstable across models.
 - Contrastive decoding: https://arxiv.org/abs/2309.09117; suggests contrasting with weaker models can improve performance.
+- https://arxiv.org/abs/2311.14648; suggests hallucinations may be inherent to statistical nature of LLMs.
 
 
 Philosophy
