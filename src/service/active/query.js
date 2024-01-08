@@ -542,7 +542,7 @@ const getSearch = async (correlationId, docId, queryInfo, uuleCanonicalNameTask,
                 return {search, resultsCount};
             } catch (e) {
                 warnings('query: serp search failed', {correlationId, docId, q}, e);
-                return {search: null, resultsCount: 0};
+                return {search: null};
             }
         };
         const candidateQueries =
@@ -552,12 +552,15 @@ const getSearch = async (correlationId, docId, queryInfo, uuleCanonicalNameTask,
         for (const q of candidateQueries) {
             const searchResult = await doSearch(q);
             searchResults.push({...searchResult, q});
-            if (searchResult.resultsCount >= SEARCH_MIN_RESULTS_COUNT) {
+            if (searchResult.resultsCount === null || searchResult.resultsCount >= SEARCH_MIN_RESULTS_COUNT) {
                 break;
             }
         }
-        const {search: search_, q: q_} = findMax(searchResults, (searchResult) => searchResult.resultsCount) ||
-        {search: null, resultsCount: 0, q: null};
+        const {search: search_, q: q_} = findMax(searchResults, ({resultsCount: c}) => {
+            if (c === undefined) return -1;
+            else if (c === null) return Infinity;
+            else return c;           
+        }) || {search: null, q: null};
         if (search_) {
             const {truncated, tokenCount} = await tokenizer.truncate(
                 correlationId, JSON.stringify(search_), SEARCH_TRUNCATION_TOKEN_COUNT);

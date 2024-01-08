@@ -256,7 +256,9 @@ const getSites = async (correlationId, docId, uuleCanonicalName, q, warnings) =>
             log.log('research: get sites: no result', {correlationId, docId, q});
             return [];
         }
-        if (resultsCount < SEARCH_MIN_RESULTS_COUNT) {
+        if (resultsCount === null) {
+            warnings('research: get sites: no results count', {correlationId, docId, q});
+        } else if (resultsCount < SEARCH_MIN_RESULTS_COUNT) {
             log.log('research: get sites: results count too low', {correlationId, docId, q, resultsCount});
             return [];
         }

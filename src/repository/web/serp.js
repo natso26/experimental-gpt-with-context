@@ -45,11 +45,10 @@ const search = wrapper.cache(cache.lruTtl(100, 15 * time.MINUTE), (correlationId
         if (rawData.error) {
             return {
                 data: null,
-                resultsCount: 0,
             };
         }
         const data = pruneResp(rawData);
-        const resultsCount = rawData.search_information?.total_results || 0;
+        const resultsCount = rawData.search_information?.total_results ?? null; // NB: sometimes Google doesn't include this field; perhaps A/B testing
         return {
             data,
             resultsCount,
